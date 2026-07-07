@@ -1,0 +1,351 @@
+.card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.heading h2 {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.heading span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: 1fr 140px;
+  gap: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fieldLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.select,
+.input {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--fg);
+  font-family: inherit;
+}
+
+.input {
+  font-family: var(--font-mono);
+}
+
+.select:focus,
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.invoiceSummary {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.invoiceCell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.primaryButton {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  border-radius: 8px;
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+  align-self: flex-start;
+}
+
+.primaryButton:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.primaryButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.errorBanner {
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: var(--danger-dim);
+  color: #fca5a5;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+}
+
+.pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.pipelineTitle {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.pipelineStep {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.pipelineStep .mark {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--success-dim);
+  color: var(--success);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.badgeRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-family: var(--font-mono);
+}
+
+.badgePass {
+  background: var(--success-dim);
+  color: var(--success);
+}
+
+.badgeFail {
+  background: var(--danger-dim);
+  color: var(--danger);
+}
+
+.comparison {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.comparisonCell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.comparisonCell .value {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.comparisonOperator {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  color: var(--muted);
+}
+
+.factors {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.factor {
+  font-size: 13px;
+  color: var(--muted);
+  padding-left: 16px;
+  position: relative;
+}
+
+.factor::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 8px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.outcome {
+  border-radius: 10px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--border);
+}
+
+.outcomeApproved {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: var(--success-dim);
+}
+
+.outcomeDeclined {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: var(--danger-dim);
+}
+
+.outcomeLabel {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.outcomeApproved .outcomeLabel {
+  color: var(--success);
+}
+
+.outcomeDeclined .outcomeLabel {
+  color: #fca5a5;
+}
+
+.fundingRow {
+  font-size: 14px;
+  color: var(--fg);
+}
+
+.memo {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--fg);
+}
+
+.chainSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+}
+
+.chainNote {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.notePreview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.notePreview strong {
+  color: var(--fg);
+}
+
+.deployResult {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.deployResult a {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+.deployError {
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: var(--danger-dim);
+  color: #fca5a5;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+}
+
+@media (max-width: 600px) {
+  .controls,
+  .invoiceSummary {
+    grid-template-columns: 1fr;
+  }
+}

@@ -26,7 +26,7 @@ app.use((req: Request, res: Response, next) => {
 
 app.post("/api/underwrite", async (req: Request, res: Response) => {
   try {
-    const { invoice, debtor_id, min_risk_score, seller_pubkey } = req.body;
+    const { invoice, debtor_id, min_risk_score } = req.body;
 
     if (!invoice || !debtor_id) {
       return res.status(400).json({
@@ -52,8 +52,7 @@ app.post("/api/underwrite", async (req: Request, res: Response) => {
       invoice as Invoice,
       debtor_id,
       minScore,
-      riskProviderUrl,
-      seller_pubkey
+      riskProviderUrl
     );
 
     res.json(result);
@@ -117,8 +116,7 @@ app.post("/api/run-agent-action", async (req: Request, res: Response) => {
       invoice as Invoice,
       debtor_id,
       minScore,
-      riskProviderUrl,
-      seller_pubkey
+      riskProviderUrl
     );
 
     if (!underwriting.decision.approved) {
@@ -138,7 +136,7 @@ app.post("/api/run-agent-action", async (req: Request, res: Response) => {
     const contractArgs = mapNoteArgsToContract(
       underwriting.noteArgs,
       seller_pubkey,
-      BigInt(underwriting.noteArgs.face_value_motes)
+      underwriting.decision.fundingAmount
     );
 
     const prepared = buildOpenNoteDeploy(

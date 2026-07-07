@@ -4,14 +4,14 @@ import {
   CLValue,
   ContractCallBuilder,
   Deploy,
+  Key,
   PublicKey,
 } from "casper-js-sdk";
-import { NoteArgs } from "./agent";
+import { NoteArgs } from "./types";
 
 export const CHAIN_NAME = "casper-test";
-
-/** Gas budget for open_note contract call (3 CSPR in motes). */
 export const OPEN_NOTE_PAYMENT_MOTES = 3_000_000_000;
+export const MOTES_PER_CSPR = 1_000_000_000;
 
 export interface ContractOpenNoteArgs {
   note_id: number;
@@ -31,13 +31,29 @@ function normalizeContractHash(hash: string): string {
   return hash.replace(/^(hash-|contract-)/, "").trim();
 }
 
-/**
- * Derive a stable u64 note_id from an invoice id string.
- */
-export function invoiceIdToNoteId(invoiceId: string): number {
-  const digest = crypto.createHash("sha256").update(invoiceId).digest();
+export function invoiceIdToNoteId(noteIdString: string): number {
+  const digest = crypto.createHash("sha256").update(noteIdString).digest();
   const raw = digest.readBigUInt64BE(0);
   return Number(raw % BigInt(Number.MAX_SAFE_INTEGER));
+}
+
+export function sellerToAddressKey(seller: string): Key {
+  const trimmed = seller.trim();
+  if (trimmed.startsWith("account-hash-")) {
+    return Key.newKey(trimmed);
+  }
+  const publicKey = PublicKey.fromHex(trimmed);
+  return Key.newKey(publicKey.accountHash().toJSON());
+}
+
+export function csprToMotes(cspr: number): string {
+  if (!Number.isFinite(cspr) || cspr < 0) {
+    throw new Error("CSPR amount must be a non-negative finite number");
+  }
+  const whole = BigInt(Math.trunc(cspr));
+  const fraction = cspr - Math.trunc(cspr);
+  const fractionalMotes = BigInt(Math.round(fraction * MOTES_PER_CSPR));
+  return (whole * BigInt(MOTES_PER_CSPR) + fractionalMotes).toString();
 }
 
 /**
@@ -45,20 +61,15 @@ export function invoiceIdToNoteId(invoiceId: string): number {
  */
 export function mapNoteArgsToContract(
   noteArgs: NoteArgs,
-  sellerPubKeyHex: string,
-  faceValueMotes: bigint
+  sellerAddress: string,
+  fundingCspr: number
 ): ContractOpenNoteArgs {
-  const noteId =
-    typeof noteArgs.note_id === "number"
-      ? noteArgs.note_id
-      : invoiceIdToNoteId(String(noteArgs.note_id));
-
-  PublicKey.fromHex(sellerPubKeyHex);
+  sellerToAddressKey(sellerAddress);
 
   return {
-    note_id: noteId,
-    seller: sellerPubKeyHex.replace(/^0x/i, ""),
-    face_value_motes: faceValueMotes.toString(),
+    note_id: invoiceIdToNoteId(noteArgs.note_id),
+    seller: sellerAddress.replace(/^0x/i, ""),
+    face_value_motes: csprToMotes(fundingCspr),
     risk_score: noteArgs.risk_score,
     risk_data_hash: noteArgs.risk_data_hash,
   };
@@ -70,11 +81,11 @@ export function buildOpenNoteDeploy(
   args: ContractOpenNoteArgs
 ): PreparedOpenNoteDeploy {
   const publicKey = PublicKey.fromHex(callerPublicKeyHex);
-  const sellerKey = PublicKey.fromHex(args.seller);
+  const seller = sellerToAddressKey(args.seller);
 
   const runtimeArgs = Args.fromMap({
     note_id: CLValue.newCLUint64(args.note_id),
-    seller: CLValue.newCLPublicKey(sellerKey),
+    seller: CLValue.newCLKey(seller),
     face_value: CLValue.newCLUInt512(args.face_value_motes),
     risk_score: CLValue.newCLUint64(args.risk_score),
     risk_data_hash: CLValue.newCLString(args.risk_data_hash),

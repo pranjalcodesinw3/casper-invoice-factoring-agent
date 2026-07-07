@@ -21,6 +21,7 @@ export interface SendDeployOutcome {
 }
 
 interface WalletState {
+  /** True once the CSPR.click SDK has an appId to initialize against. */
   configured: boolean;
   account: AccountType | null;
   publicKeyHex: string | null;
@@ -39,6 +40,11 @@ export function useWallet(): WalletState {
   return ctx;
 }
 
+/**
+ * Bridges the CSPR.click SDK (only reachable via `useClickRef()` inside a
+ * `<ClickProvider>`) into a plain React context so the rest of the app does not
+ * need to know about the SDK's event-emitter shape.
+ */
 function WalletBridge({ children }: { children: ReactNode }) {
   const clickRef = useClickRef();
   const [account, setAccount] = useState<AccountType | null>(null);
@@ -99,6 +105,7 @@ function WalletBridge({ children }: { children: ReactNode }) {
         };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        console.error("[wallet] send failed:", message);
         return { cancelled: false, deployHash: null, error: message };
       }
     },

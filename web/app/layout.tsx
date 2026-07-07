@@ -1,6 +1,7 @@
+import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
-import { WalletProvider } from "@/lib/wallet";
 import "./globals.css";
+import Providers from "@/components/Providers";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -12,10 +13,10 @@ const jetbrainsMono = JetBrains_Mono({
   variable: "--font-geist-mono",
 });
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Invoice Factoring Agent",
   description:
-    "Agentic invoice underwriting on Casper testnet: paid risk data, AI memo, on-chain open_note proof.",
+    "An agentic underwriter that pays a data endpoint for a signed risk report, decides whether to advance an invoice, and opens the receivable note on-chain on Casper testnet.",
 };
 
 export default function RootLayout({
@@ -26,7 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.variable} ${jetbrainsMono.variable}`}>
-        <WalletProvider>{children}</WalletProvider>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
