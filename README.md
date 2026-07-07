@@ -29,10 +29,3 @@ Invoice form, risk endpoint, note registry, escrow funding, repayment marker, pr
 ## Main risk
 
 Off-chain invoice truth. MVP must frame data as demo attestation, not real credit decision.
-
-## Docs
-
-- [PRD](PRD.md)
-- [Build Plan](BUILD_PLAN.md)
-- [Demo and Submission](DEMO_AND_SUBMISSION.md)
-- [Risk Register](RISK_REGISTER.md)
