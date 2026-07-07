@@ -1,0 +1,16 @@
+{
+  "invoices": {
+    "good": {
+      "invoice_id": "INV-2024-001",
+      "debtor_name": "Acme Corp Manufacturing",
+      "face_value": 150000,
+      "days_overdue": 15
+    },
+    "risky": {
+      "invoice_id": "INV-2024-002",
+      "debtor_name": "StartupTech Inc",
+      "face_value": 45000,
+      "days_overdue": 45
+    }
+  }
+}

@@ -1,0 +1,30 @@
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.button {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--fg);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.button:hover {
+  background: var(--card-hover);
+}
+
+.connected {
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+}

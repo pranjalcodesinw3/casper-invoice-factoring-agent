@@ -1,0 +1,26 @@
+{
+  "debtors": {
+    "acme_corp": {
+      "name": "Acme Corp Manufacturing",
+      "riskScore": 82,
+      "factors": [
+        "D&B rating: Prime",
+        "Payment history: 99% on-time",
+        "Debt service coverage: 3.2x",
+        "Industry: Stable manufacturing"
+      ],
+      "creditLimit": 500000
+    },
+    "startup_tech": {
+      "name": "StartupTech Inc",
+      "riskScore": 35,
+      "factors": [
+        "D&B rating: Not classified",
+        "Payment history: 2 late payments in 6 months",
+        "Debt service coverage: 1.1x",
+        "Industry: High volatility, pre-revenue"
+      ],
+      "creditLimit": 50000
+    }
+  }
+}

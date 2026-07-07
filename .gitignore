@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+dist/
+.next/
+.env
+.env.local
+.env.*.local
+
+# Rust / Odra
+target/
+wasm/
+
+# OS / IDE
+.DS_Store
+*.log
