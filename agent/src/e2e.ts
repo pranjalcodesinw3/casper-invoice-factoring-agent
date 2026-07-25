@@ -49,7 +49,11 @@ async function main() {
       accessKey: process.env.CSPR_CLOUD_ACCESS_KEY,
       contractHash: CONTRACT_HASH,
     },
-    openai: { apiKey, model: process.env.OPENROUTER_MODEL },
+    openai: {
+      apiKey,
+      baseURL: process.env.OPENROUTER_BASE_URL,
+      model: process.env.OPENROUTER_MODEL,
+    },
     risk: {
       baseUrl: process.env.RISK_PROVIDER_URL ?? "http://localhost:4031",
       secret,
