@@ -1,307 +1,136 @@
 # Invoice Factoring Agent
 
-**Turn an unpaid invoice into a funded receivable note with agentic underwriting.**
+**An unpaid invoice becomes a funded receivable note, and the underwriter never
+gets to pick its own acceptance bar.**
 
-Invoice Factoring Agent is an on-chain receivable escrow system on the Casper blockchain. An AI agent reviews invoice data, purchases signed risk scores via an x402-style endpoint, and opens a receivable note on-chain. Investors fund notes by attaching native CSPR, which the escrow forwards directly to the seller. Built with the Odra 2.8.2 framework for Casper 2.0.
+An AI agent reads the escrow's terms **from the contract**, buys a signed risk
+score over an x402-style endpoint, and opens a receivable note. Investors fund
+notes with native CSPR, which the escrow forwards to the seller.
 
----
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Smart Contracts](#smart-contracts)
-- [Contract Addresses](#contract-addresses)
-- [Getting Started](#getting-started)
-- [Frontend](#frontend)
-- [Security](#security)
-- [License](#license)
-- [Links](#links)
+**Repository:** [github.com/kamalbuilds/casper-invoice-factoring-agent](https://github.com/kamalbuilds/casper-invoice-factoring-agent)
 
 ---
 
-## Overview
+## Why this is not the other 77 finalists
 
-Invoice Factoring Agent bridges off-chain invoice data with on-chain receivable finance. Small suppliers upload invoice details; the AI underwriting agent purchases a signed risk score from a paid data provider, then calls `open_note` on the ReceivableEscrow contract. Investors browse open notes and fund them by attaching the exact face value in CSPR. The escrow forwards funds to the seller and records the investor. The owner later marks notes repaid once the debtor settles off-chain. All lifecycle transitions emit auditable events readable via CSPR.cloud.
+Most agentic underwriters in this field decide with a fixed if-ladder in
+TypeScript while an LLM writes prose next to it. Here the model gets no chain
+state in its prompt: it must call `get_escrow_terms` to learn the minimum risk
+score the contract enforces, `get_risk_report` to buy signed debtor data, and
+`propose_open_note` to act.
 
-### Key Metrics (Testnet)
+Three layers must agree before a note opens:
 
-| Metric | Value |
-|--------|-------|
-| **Network** | Casper Testnet |
-| **Framework** | Odra 2.8.2 |
-| **Agent Port** | 4030 |
-| **Risk Provider Port** | 4031 |
-| **Web Port** | 3000 |
+1. the model chooses to call `propose_open_note`
+2. this process re-checks the request against live contract state
+3. the contract re-checks `min_risk_score` and note uniqueness, and reverts
 
----
-
-## Features
-
-- **Agentic Underwriting**: AI agent reviews invoices and purchases risk data
-- **On-Chain Receivable Notes**: Face value, risk score, and seller recorded on-chain
-- **Escrow Funding**: Investors attach exact face value; escrow forwards to seller
-- **Risk Score Gate**: Notes below `min_risk_score` are rejected at `open_note`
-- **x402 Risk API**: Paid risk provider with HMAC-signed responses
-- **Lifecycle Tracking**: Open, Funded, and Repaid states with event receipts
-- **CSPR.click Integration**: Wallet-connected funding flow in the web UI
+Only the third is authoritative. The first two exist so a failure is cheap and
+legible instead of costing gas. A test asserts that changing only the *on-chain*
+threshold flips the outcome for an identical tool call, which is what "the model
+does not set the bar" actually means.
 
 ---
 
 ## Architecture
 
-```
-                    +------------------+
-                    |  Seller Wallet   |
-                    |   (CSPR.click)   |
-                    +--------+---------+
-                             |
-                             v
-+----------------------------------------------------------+
-|              Web UI (Next.js)                             |
-|  - Upload invoice details                                 |
-|  - Connect wallet via CSPR.click                          |
-|  - Fund open notes / view event timeline                  |
-+---------------------------+------------------------------+
-                            |
-                            v
-+----------------------------------------------------------+
-|              Agent Server (port 4030)                     |
-|  - POST /api/underwrite: AI review + risk purchase        |
-|  - POST /api/run-agent-action: Full underwriting flow     |
-|  - Build open_note deploy via casper-js-sdk               |
-+---------------------------+------------------------------+
-                            |
-              x402 payment  |              open_note()
-                            v                            v
-+----------------------------+    +---------------------------+
-|  Risk Provider (port 4031) |    | ReceivableEscrow (Odra)   |
-|  - Signed risk scores      |    |  - open_note()            |
-|  - HMAC attestation        |    |  - fund_note() payable    |
-+----------------------------+    |  - mark_repaid()          |
-                                  +---------------------------+
-                                              ^
-                                              | fund_note() payable
-                                              |
-                                  +---------------------------+
-                                  |   Investor Wallet         |
-                                  |   (CSPR.click)            |
-                                  +---------------------------+
-```
+```mermaid
+flowchart TD
+    Invoice["Unpaid invoice<br/>debtor, face value, days overdue"] --> Agent
 
-### Funding Flow
+    subgraph Agent["Underwriting agent"]
+      Loop["LLM tool loop<br/>no chain state in the prompt"]
+      Tools["get_escrow_terms · get_risk_report<br/>find_free_note_id · propose_open_note"]
+    end
 
-```
-+----------+  underwrite   +-------------+  open_note   +------------------+
-| Supplier | ------------> | Agent (4030)| -----------> | ReceivableEscrow |
-|          |               |             |              |                  |
-|          |               |             |              |                  |
-|          |               +-------------+              |                  |
-|          |                      ^                       |                  |
-|          |                      | risk score           |                  |
-|          |               +-------------+               |                  |
-|          |               | Risk Prov.  |               |                  |
-|          |               |   (4031)    |               |                  |
-|          |               +-------------+               |                  |
-|          |                                             |                  |
-| Investor | ---------------- fund_note() -------------->|                  |
-|          | <----------- CSPR to seller ----------------|                  |
-+----------+                                             +------------------+
+    Escrow[("ReceivableEscrow<br/>min_risk_score, notes")] -->|"the acceptance bar"| Agent
+    Oracle["Risk provider<br/>402 then signed report"] -->|"score + signature"| Agent
+
+    Agent -->|"propose_open_note<br/>only if the local re-check passes"| Escrow
+    Escrow -->|score below minimum| R["Revert RiskTooHigh"]
+    Escrow -->|id already used| R2["Revert NoteExists"]
+    Escrow -->|accepted| Note["Note opened"]
+
+    Investor["Investor"] -->|"fund_note with native CSPR"| Escrow
+    Escrow -->|forwards funding| Seller["Seller"]
 ```
 
 ---
 
-## Smart Contracts
-
-### ReceivableEscrow
-
-The core escrow contract managing receivable note lifecycle from opening through repayment.
-
-**Entry Points:**
-
-| Function | Description | Parameters |
-|----------|-------------|------------|
-| `init` | Initialize escrow with owner and minimum risk score | `min_risk_score: u64` |
-| `open_note` | Open a new receivable note | `note_id: u64, seller: Address, face_value: U512, risk_score: u64, risk_data_hash: String` |
-| `fund_note` | Fund an open note and forward CSPR to seller | `note_id: u64` (payable) |
-| `mark_repaid` | Mark a funded note as repaid | `note_id: u64` |
-
-**Events:**
-
-| Event | Description |
-|-------|-------------|
-| `NoteOpened` | Owner opened a new receivable note |
-| `NoteFunded` | Investor funded a note; escrow forwarded value to seller |
-| `NoteRepaid` | Owner marked a funded note as repaid |
-
----
-
-## Contract Addresses
-
-### Casper Testnet
-
-| Contract | Package Hash | Explorer |
-|----------|--------------|----------|
-| **ReceivableEscrow** | `hash-1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec` | [View on cspr.live](https://testnet.cspr.live/package/hash-1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec) |
-
-### Network Configuration
-
-| Setting | Value |
-|---------|-------|
-| **Chain Name** | `casper-test` |
-| **Node URL** | `https://node.testnet.casper.network` |
-| **CSPR.cloud RPC** | `https://node.testnet.cspr.cloud/rpc` |
-| **Explorer** | `https://testnet.cspr.live` |
-
----
-
-## Getting Started
-
-### Prerequisites
-
-- Rust 1.70+
-- Cargo
-- Odra CLI 2.8.2
-- Node.js 18+
-- Casper testnet account funded via the [testnet faucet](https://testnet.cspr.live/tools/faucet)
-
-### Build Contracts
+## Run it in under 5 commands
 
 ```bash
-cd contract
-cargo odra test
-cargo odra build
+git clone https://github.com/kamalbuilds/casper-invoice-factoring-agent && cd casper-invoice-factoring-agent
+(cd contract && rustup toolchain install nightly-2026-01-01 --profile minimal && cargo test)
+(cd agent && npm install && npm test)
 ```
 
-Wasm output lands at `contract/wasm/ReceivableEscrow.wasm`.
-
-### Deploy Contracts
-
-```bash
-casper-client put-transaction session \
-  --node-address https://node.testnet.cspr.cloud/rpc \
-  --chain-name casper-test \
-  --secret-key /path/to/secret_key.pem \
-  --wasm-path ./wasm/ReceivableEscrow.wasm \
-  --install-upgrade \
-  --pricing-mode fixed \
-  --gas-price-tolerance 1 \
-  --payment-amount 300000000000
-```
-
-Record the contract hash from the deploy result and set it in environment files below.
-
-### Run Agent and Risk Provider
-
-```bash
-cd agent
-npm install
-cp .env.example .env
-npm run dev
-```
-
-This starts:
-
-- **Agent server** at `http://localhost:4030` (`POST /api/underwrite`, `POST /api/run-agent-action`)
-- **Risk provider** at `http://localhost:4031` (signed risk scores)
-
-### Run Web UI
-
-```bash
-cd web
-npm install
-cp .env.local.example .env.local
-npm run dev
-```
-
-Web UI available at `http://localhost:3000`.
+12 contract tests and 11 agent tests, fully offline: no API key, no node, no
+secret. To run the flow locally, start the risk provider with
+`cd agent && npm run provider`, then `npm run cli:good` (or `cli:risky` to watch
+it refuse) in a second shell.
 
 ---
 
-## Frontend
+## On-chain proof
 
-The web app is a Next.js application with CSPR.click wallet integration.
+Casper **testnet** (`casper-test`).
 
-### Pages
+| What | Hash | Status |
+|---|---|---|
+| Package | `1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec` | [contract-package](https://testnet.cspr.live/contract-package/1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec) — resolves |
+| Contract | `984243631528b25918c69364ba6c28893b061d1c90858e1872b7c8c0f56a8cb8` | live |
 
-- **Home**: Upload invoice, trigger AI underwriting, view open notes
-- **Fund Note**: Connect wallet and fund a receivable note
-- **Proof Timeline**: Display `NoteOpened`, `NoteFunded`, and `NoteRepaid` events from CSPR.cloud
+**The contract has no transaction activity yet.** The explorer reports "No
+activity to display" for this package. It is deployed and readable; no
+`open_note` or `fund_note` has been executed on chain. This README claims
+deployment and nothing more.
 
-### Wallet Integration
-
-Uses [CSPR.click](https://cspr.click) for wallet connection supporting:
-
-- Casper Wallet
-- Ledger
-- Torus Wallet
-- CasperDash
-- MetaMask Snap
-
-### Environment Variables
-
-**Agent (`agent/.env`):**
-
-```env
-OPENROUTER_API_KEY=sk_live_...
-RISK_PROVIDER_SECRET=dev-secret-key-change-in-production
-CONTRACT_HASH=hash-1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec
-CASPER_NODE_ADDRESS=https://node.testnet.cspr.cloud/rpc
-RISK_PROVIDER_PORT=4031
-SERVER_PORT=4030
-```
-
-**Web (`web/.env.local`):**
-
-```env
-NEXT_PUBLIC_CSPR_CLICK_APP_ID=your_cspr_click_app_id
-NEXT_PUBLIC_CONTRACT_HASH=hash-1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec
-NEXT_PUBLIC_AGENT_URL=http://localhost:4030
-```
+That is the honest state, and it is the single biggest gap in this project. The
+underwriting logic, the refusal paths and the contract invariants are covered by
+23 passing tests; none of that is the same as a settled note on a live network.
 
 ---
 
-## Security
+## Honest limits
 
-### Access Control
+- **No executed flow on chain.** See above. Deployment is proven; execution is not.
+- **The debtor set is a fixture.** `agent/src/debtors.json` and `invoices.json`
+  are sample data. There is no integration with an accounting system, an
+  invoicing platform, or a credit bureau.
+- **The risk score is signed by our own provider**, with a shared HMAC secret.
+  It is a working payment-and-signature handshake, not an independent credit
+  oracle, and a third party cannot verify a report from the chain alone.
+- **No repayment or default path.** The contract opens and funds notes. What
+  happens when the debtor pays late, partially, or never is not modelled.
+- **No secondary market.** A note is not transferable.
+- **One module, 7 entrypoints.** Deliberately small.
+- **Testnet only.** Nothing here is on mainnet.
 
-- Owner-only functions: `open_note`, `mark_repaid`
-- `fund_note` callable by any investor with exact face value attached
-- `init` sets deployer as owner and configures `min_risk_score`
+---
 
-### Escrow Safety
+## Tests and CI
 
-- Funding requires exact face value match (`WrongAmount` guard)
-- Notes can only be funded once (`AlreadyFunded` guard)
-- Repayment only allowed on funded notes (`NotFunded` guard)
-- Risk scores below minimum rejected at `open_note`
+| Suite | Count | Command |
+|---|---:|---|
+| Contract | 12 | `cd contract && cargo test` |
+| Agent | 11 | `cd agent && npm test` |
 
-### Off-Chain Data Trust
+The agent suite was mutation-checked: disabling the minimum-risk re-check in
+`underwriting-tools.ts` fails two tests, and it was restored green. Other tests
+cover the decimal-string to motes conversion at amounts where a float would
+round, and the account-hash encoding bug where `toJSON()` emits an unhyphenated
+form that `Key.newKey` rejects.
 
-- Invoice and risk data are demo attestations, not real credit decisions
-- Risk provider responses are HMAC-signed
-- `risk_data_hash` stored on-chain for audit trail
-- Production requires verified invoice sources and multi-party attestation
-
-### Audits
-
-- [ ] Pending security audit
+CI (`.github/workflows/ci.yml`) runs the agent job, the contract job, and a
+**clean-clone** job that installs from a fresh clone. `contract/Cargo.lock` is
+committed so a judge resolves the same Odra 2.8.2 the tests were written
+against, and `contract/rust-toolchain` pins the compiler. No CI job touches the
+network or reads a secret, so a green badge means the code is correct, not that
+testnet was up.
 
 ---
 
 ## License
 
-MIT License. See [LICENSE](./LICENSE) for details.
-
----
-
-## Links
-
-- **GitHub**: [pranjalcodesinw3/casper-invoice-factoring-agent](https://github.com/pranjalcodesinw3/casper-invoice-factoring-agent)
-- **Testnet Explorer**: [cspr.live](https://testnet.cspr.live)
-- **Package**: [ReceivableEscrow on testnet](https://testnet.cspr.live/package/hash-1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec)
-- **Casper Documentation**: [docs.casper.network](https://docs.casper.network)
-- **Odra Framework**: [odra.dev](https://odra.dev)
-- **CSPR.click**: [cspr.click](https://cspr.click)
-- **CSPR.cloud**: [cspr.cloud](https://cspr.cloud)
+MIT

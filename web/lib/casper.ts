@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import {
   Args,
+  CLTypeUInt8,
   CLValue,
   ContractCallBuilder,
   Deploy,
@@ -267,12 +268,16 @@ export async function buildFundNoteDeploy(
   const innerArgs = Args.fromMap({
     note_id: CLValue.newCLUint64(noteId),
   });
-  const innerArgsBytes = innerArgs.toBytes();
+  const innerBytes = Array.from(innerArgs.toBytes());
+  const argsList = CLValue.newCLList(
+    CLTypeUInt8,
+    innerBytes.map((b) => CLValue.newCLUint8(b))
+  );
 
   const proxyArgs = Args.fromMap({
     package_hash: CLValue.newCLByteArray(packageHashBytes),
     entry_point: CLValue.newCLString("fund_note"),
-    args: CLValue.newCLByteArray(innerArgsBytes),
+    args: argsList,
     attached_value: CLValue.newCLUInt512(faceValueMotes),
     amount: CLValue.newCLUInt512(faceValueMotes),
   });

@@ -8,7 +8,7 @@ export default function WalletButton() {
   const wallet = useWallet();
 
   if (!wallet.configured) {
-    return <div className={styles.unconfigured}>Wallet not configured</div>;
+    return <div className={styles.unconfigured}>Loading wallet…</div>;
   }
 
   if (wallet.publicKeyHex) {

@@ -9,22 +9,32 @@ import {
 } from "@/lib/agent-client";
 import {
   buildOpenNoteDeploy,
+  DEMO_USD_PER_CSPR,
   explorerDeployUrl,
+  isOwnerPublicKey,
   mapNoteArgsToContract,
   noteIdFromString,
   truncateHex,
+  usdToFundingCspr,
 } from "@/lib/casper";
 import { useWallet } from "@/lib/wallet";
 import styles from "./UnderwritePanel.module.css";
+
+export type NoteStatus = "open" | "funded" | "repaid";
 
 export interface OpenedNote {
   noteId: number;
   seller: string;
   faceValueMotes: string;
+  fundingCspr: number;
+  fundingUsd: number;
   riskScore: number;
   riskDataHash: string;
   deployHash: string;
   invoiceId: string;
+  status: NoteStatus;
+  fundDeployHash?: string;
+  repayDeployHash?: string;
 }
 
 interface UnderwritePanelProps {
@@ -40,6 +50,7 @@ type DeployStatus =
   | { state: "cancelled" };
 
 const CONTRACT_HASH = process.env.NEXT_PUBLIC_CONTRACT_HASH;
+const OWNER_PUBLIC_KEY = process.env.NEXT_PUBLIC_OWNER_PUBLIC_KEY;
 
 export default function UnderwritePanel({ onEvaluated, onNoteOpened }: UnderwritePanelProps) {
   const wallet = useWallet();
@@ -55,6 +66,8 @@ export default function UnderwritePanel({ onEvaluated, onNoteOpened }: Underwrit
     () => SCENARIOS.find((s) => s.key === scenarioKey) ?? SCENARIOS[0],
     [scenarioKey]
   );
+
+  const isOwner = isOwnerPublicKey(wallet.publicKeyHex, OWNER_PUBLIC_KEY);
 
   const runEvaluation = async () => {
     const min = Number.parseInt(minRiskScore, 10);
@@ -96,6 +109,13 @@ export default function UnderwritePanel({ onEvaluated, onNoteOpened }: Underwrit
       setDeploy({ state: "error", message: "Connect the owner wallet before opening a note." });
       return;
     }
+    if (!isOwner) {
+      setDeploy({
+        state: "error",
+        message: "open_note is owner-gated. Connect the contract owner key.",
+      });
+      return;
+    }
     const seller = sellerAddress.trim();
     if (!seller) {
       setDeploy({
@@ -134,10 +154,13 @@ export default function UnderwritePanel({ onEvaluated, onNoteOpened }: Underwrit
           noteId: contractArgs.noteId,
           seller: contractArgs.sellerAddress,
           faceValueMotes: contractArgs.faceValueMotes,
+          fundingCspr: usdToFundingCspr(result.decision.fundingAmount),
+          fundingUsd: result.decision.fundingAmount,
           riskScore: contractArgs.riskScore,
           riskDataHash: contractArgs.riskDataHash,
           deployHash: hash,
           invoiceId: result.invoice.invoice_id,
+          status: "open",
         });
       }
     } catch (err) {
@@ -272,10 +295,19 @@ export default function UnderwritePanel({ onEvaluated, onNoteOpened }: Underwrit
             {approved && (
               <div className={styles.fundingRow}>
                 <span>
-                  Funding amount:{" "}
+                  USD advance:{" "}
                   <strong className="mono">
                     ${result.decision.fundingAmount.toLocaleString()}
                   </strong>
+                </span>
+                <span>
+                  On-chain face value:{" "}
+                  <strong className="mono">
+                    {usdToFundingCspr(result.decision.fundingAmount)} CSPR
+                  </strong>
+                  <span className={styles.rateHint}>
+                    (demo: ${DEMO_USD_PER_CSPR.toLocaleString()} USD per 1 CSPR)
+                  </span>
                 </span>
               </div>
             )}
@@ -283,13 +315,22 @@ export default function UnderwritePanel({ onEvaluated, onNoteOpened }: Underwrit
           </div>
 
           <div className={styles.chainSection}>
-            <p className={styles.chainNote}>
-              open_note is owner-gated on-chain: only the wallet holding the ReceivableEscrow
-              owner key (the agent-underwriter authority) can execute it, and the risk score
-              must clear the contract&apos;s configured minimum. The invoice id maps to a
-              deterministic u64 note id, and the seller public key below is encoded as the
-              Odra Address that receives investor funding.
-            </p>
+            <div className={styles.ownerRow}>
+              <p className={styles.chainNote}>
+                open_note is owner-gated on-chain: only the wallet holding the ReceivableEscrow
+                owner key (the agent-underwriter authority) can execute it, and the risk score
+                must clear the contract&apos;s configured minimum. The invoice id maps to a
+                deterministic u64 note id, and the seller public key below is encoded as the
+                Odra Address that receives investor funding.
+              </p>
+              {isOwner ? (
+                <span className={styles.ownerBadge}>Owner wallet connected</span>
+              ) : (
+                <span className={styles.ownerBadgeMuted}>
+                  Connect owner key{OWNER_PUBLIC_KEY ? " (configured)" : ""}
+                </span>
+              )}
+            </div>
             <label className={styles.field}>
               <span className={styles.fieldLabel}>Seller public key (Address)</span>
               <input
@@ -317,7 +358,7 @@ export default function UnderwritePanel({ onEvaluated, onNoteOpened }: Underwrit
               type="button"
               className={styles.primaryButton}
               onClick={openNoteOnChain}
-              disabled={!approved || deploy.state === "pending"}
+              disabled={!approved || !isOwner || deploy.state === "pending"}
             >
               {deploy.state === "pending" ? "Awaiting wallet..." : "Open note on-chain"}
             </button>

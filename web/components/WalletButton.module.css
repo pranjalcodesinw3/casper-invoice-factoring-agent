@@ -5,8 +5,8 @@
   background: var(--accent);
   color: var(--accent-fg);
   border: none;
-  border-radius: 8px;
-  padding: 10px 16px;
+  border-radius: 999px;
+  padding: 10px 18px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -14,17 +14,17 @@
 }
 
 .button:hover {
-  opacity: 0.88;
+  opacity: 0.9;
 }
 
 .connected {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--glass-bg);
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  padding: 8px 8px 8px 14px;
+  border-radius: 999px;
+  padding: 6px 6px 6px 14px;
 }
 
 .dot {
@@ -33,6 +33,7 @@
   border-radius: 50%;
   background: var(--success);
   flex-shrink: 0;
+  box-shadow: 0 0 0 3px var(--success-dim);
 }
 
 .key {
@@ -43,24 +44,29 @@
 
 .disconnect {
   background: transparent;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   color: var(--muted);
-  border-radius: 6px;
-  padding: 5px 10px;
+  border-radius: 999px;
+  padding: 5px 12px;
   font-size: 11px;
+  font-weight: 500;
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease;
 }
 
 .disconnect:hover {
-  border-color: var(--danger);
+  border-color: rgba(239, 68, 68, 0.4);
   color: var(--danger);
+  background: var(--danger-dim);
 }
 
 .unconfigured {
   font-size: 12px;
   color: var(--muted);
   border: 1px dashed var(--border-strong);
-  border-radius: 8px;
-  padding: 9px 14px;
+  border-radius: 999px;
+  padding: 8px 14px;
 }

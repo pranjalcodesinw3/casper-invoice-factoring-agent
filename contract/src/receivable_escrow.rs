@@ -229,7 +229,10 @@ impl ReceivableEscrow {
 
 #[cfg(test)]
 mod tests {
-    use super::{Error, NoteFunded, NoteOpened, NoteRepaid, ReceivableEscrow, ReceivableEscrowHostRef, ReceivableEscrowInitArgs};
+    use super::{
+        Error, NoteFunded, NoteOpened, NoteRepaid, ReceivableEscrow, ReceivableEscrowHostRef,
+        ReceivableEscrowInitArgs,
+    };
     use odra::casper_types::U512;
     use odra::host::{Deployer, HostEnv, HostRef};
 
@@ -366,9 +369,7 @@ mod tests {
 
         env.set_caller(investor);
         assert_eq!(
-            contract
-                .with_tokens(U512::from(4_999u64))
-                .try_fund_note(6),
+            contract.with_tokens(U512::from(4_999u64)).try_fund_note(6),
             Err(Error::WrongAmount.into())
         );
     }
@@ -401,7 +402,9 @@ mod tests {
 
         env.set_caller(investor);
         assert_eq!(
-            contract.with_tokens(U512::from(1_000u64)).try_fund_note(999),
+            contract
+                .with_tokens(U512::from(1_000u64))
+                .try_fund_note(999),
             Err(Error::NoNote.into())
         );
     }
@@ -436,10 +439,7 @@ mod tests {
         env.set_caller(env.get_account(0));
         contract.open_note(9, seller, U512::from(1_000u64), 60, "hash-9".to_string());
 
-        assert_eq!(
-            contract.try_mark_repaid(9),
-            Err(Error::NotFunded.into())
-        );
+        assert_eq!(contract.try_mark_repaid(9), Err(Error::NotFunded.into()));
     }
 
     #[test]

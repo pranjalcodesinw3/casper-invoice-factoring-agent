@@ -1,10 +1,17 @@
 .shell {
-  max-width: 1120px;
+  max-width: 80rem;
   margin: 0 auto;
-  padding: 28px 24px 80px;
+  padding: 48px 24px 96px;
   display: flex;
   flex-direction: column;
   gap: 40px;
+}
+
+@media (min-width: 1024px) {
+  .shell {
+    padding-left: 32px;
+    padding-right: 32px;
+  }
 }
 
 .topBar {
@@ -12,52 +19,67 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
 }
 
 .brand {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .brand strong {
   font-size: 14px;
   font-weight: 600;
   letter-spacing: -0.01em;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--fg);
+}
+
+.brand strong::before {
+  content: "";
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: linear-gradient(135deg, #c4b5fd, var(--accent));
+  box-shadow: 0 0 20px var(--accent-glow);
 }
 
 .brand span {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
+  padding-left: 32px;
+  font-family: var(--font-mono);
 }
 
 .hero {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding-top: 12px;
+  gap: 16px;
 }
 
 .hero h1 {
-  font-size: clamp(2rem, 3.4vw, 2.75rem);
+  font-size: clamp(2rem, 3.5vw, 2.85rem);
   font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
-  max-width: 24ch;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+  max-width: 18ch;
 }
 
 .hero p {
-  font-size: 16px;
+  font-size: 15.5px;
   color: var(--muted);
-  max-width: 62ch;
-  line-height: 1.6;
+  max-width: 38rem;
+  line-height: 1.65;
 }
 
 .metaRow {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: 4px;
 }
 
 .metaChip {
@@ -65,10 +87,18 @@
   align-items: center;
   gap: 8px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 7px 12px;
+  border-radius: 999px;
+  padding: 6px 14px;
   font-size: 12px;
   color: var(--muted);
+  background: var(--glass-bg);
+  backdrop-filter: blur(8px);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.metaChip:hover {
+  border-color: var(--border-strong);
+  background: var(--glass-bg-hover);
 }
 
 .metaValue {
@@ -81,47 +111,68 @@
   height: 6px;
   border-radius: 50%;
   background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim), 0 0 10px var(--accent-glow);
 }
 
 .timeline {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(7, 1fr);
   gap: 12px;
 }
 
 .step {
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 14px;
-  background: var(--bg-raised);
+  border-radius: var(--radius);
+  padding: 16px;
+  background: linear-gradient(165deg, rgba(19, 16, 31, 0.95), rgba(11, 9, 20, 0.9));
+  box-shadow: var(--shadow-card);
+  min-height: 128px;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.step:hover {
+  background: linear-gradient(165deg, rgba(28, 22, 48, 0.98), rgba(14, 11, 26, 0.95));
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: 0 0 0 1px var(--border-strong), 0 16px 40px rgba(0, 0, 0, 0.45);
 }
 
 .stepMark {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 11px;
   font-weight: 600;
+  font-family: var(--font-mono);
   flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--muted);
+  border: 1px solid var(--border);
 }
 
 .stepBody {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
 }
 
 .stepTitle {
   font-size: 13px;
   font-weight: 600;
   letter-spacing: -0.01em;
+  line-height: 1.3;
 }
 
 .stepDetail {
@@ -130,22 +181,38 @@
   line-height: 1.5;
 }
 
+.stepDetailLink {
+  font-size: 11px;
+  color: var(--accent);
+  line-height: 1.5;
+  word-break: break-all;
+  font-family: var(--font-mono);
+}
+
+.stepDetailLink:hover {
+  text-decoration: underline;
+}
+
 .complete {
-  border-color: rgba(34, 197, 94, 0.3);
+  border-color: rgba(52, 211, 153, 0.3);
 }
 
 .complete .stepMark {
   background: var(--success-dim);
   color: var(--success);
+  border-color: rgba(52, 211, 153, 0.35);
 }
 
 .active {
-  border-color: var(--accent);
+  border-color: rgba(167, 139, 250, 0.4);
+  box-shadow: 0 0 0 1px rgba(167, 139, 250, 0.15), 0 12px 32px rgba(139, 92, 246, 0.12);
 }
 
 .active .stepMark {
   background: var(--accent-dim);
   color: var(--accent);
+  border-color: rgba(167, 139, 250, 0.4);
+  box-shadow: 0 0 12px var(--accent-dim);
 }
 
 .pending {
@@ -155,15 +222,23 @@
 .grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 24px;
+  gap: 20px;
   align-items: start;
 }
 
 .footer {
   border-top: 1px solid var(--border);
-  padding-top: 20px;
+  padding-top: 24px;
   font-size: 12px;
   color: var(--muted-2);
+  line-height: 1.6;
+  font-family: var(--font-mono);
+}
+
+@media (max-width: 1100px) {
+  .timeline {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 @media (max-width: 860px) {
@@ -173,7 +248,17 @@
 }
 
 @media (max-width: 520px) {
+  .shell {
+    padding-top: 36px;
+    gap: 32px;
+  }
+
   .timeline {
     grid-template-columns: 1fr;
+  }
+
+  .step {
+    min-height: 0;
+    flex-direction: row;
   }
 }

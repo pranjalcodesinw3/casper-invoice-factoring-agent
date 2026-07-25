@@ -1,0 +1,107 @@
+name: CI
+
+# A green badge here means: the TypeScript compiles, the deterministic agent
+# logic holds, and the Odra contract's 12 tests pass.
+#
+# It deliberately does NOT mean "Casper testnet was reachable". No job here
+# needs a node, an API key, or a secret. The scripts that do need the chain
+# (agent/src/e2e.ts and friends) are excluded from CI and stay runnable
+# locally; see "Live checks" in the README. A badge that only proved the
+# network was up would be worse than no badge.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  agent:
+    name: agent (typecheck + 10 tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: agent/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        # No CASPER_* and no *_API_KEY in the environment, on purpose: a test
+        # that silently needed the network fails here rather than passing by
+        # luck on a day the node happens to be up.
+        run: npm test
+
+  contract:
+    name: contract (cargo test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contract
+    steps:
+      - uses: actions/checkout@v4
+
+      # No toolchain pin here on purpose: contract/rust-toolchain is tracked and
+      # says nightly-2026-01-01, and rustup reads it automatically. Pinning again
+      # would create a second place to update and let the two drift.
+      - name: Add the wasm target the release build needs
+        run: rustup target add wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contract
+          # Cold, this job compiles casper-execution-engine from scratch and
+          # takes ~10 minutes. Keyed on the lock, it is seconds.
+          key: odra-2.8.2
+
+      - name: Formatting
+        run: cargo fmt -- --check
+
+      - name: Contract tests
+        # Cargo.lock is committed, so this resolves the exact Odra the tests were
+        # written against. Not --offline: that only works on a machine that has
+        # already vendored the crates, which a clean runner has not.
+        run: cargo test
+
+  clean-clone:
+    name: clean clone (what a judge actually hits)
+    # Catches the failure a workspace-relative install never sees: a dependency
+    # that resolves from the developer's tree but not from a fresh clone.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: repo
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Clone into a directory with no workspace above it
+        run: git clone --local repo "$RUNNER_TEMP/clean"
+
+      - name: Install, typecheck and test from the clone
+        working-directory: ${{ runner.temp }}/clean/agent
+        # npm install, not npm ci: this asserts the manifest is resolvable on
+        # its own, not merely that the committed lockfile replays.
+        run: |
+          npm install
+          npm run typecheck
+          npm test

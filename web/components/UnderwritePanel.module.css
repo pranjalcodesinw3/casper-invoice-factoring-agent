@@ -1,11 +1,19 @@
 .card {
-  background: var(--bg-raised);
+  background: var(--glass-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 28px;
+  padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 24px;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.card:hover {
+  background: var(--glass-bg-hover);
+  border-color: var(--border-strong);
 }
 
 .heading {
@@ -13,6 +21,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .heading h2 {
@@ -29,13 +38,13 @@
 .controls {
   display: grid;
   grid-template-columns: 1fr 140px;
-  gap: 14px;
+  gap: 16px;
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .fieldLabel {
@@ -43,17 +52,19 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
+  font-weight: 500;
 }
 
 .select,
 .input {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--glass-bg);
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 10px 12px;
   font-size: 13px;
   color: var(--fg);
   font-family: inherit;
+  transition: border-color 0.15s ease;
 }
 
 .input {
@@ -74,17 +85,17 @@
 .invoiceSummary {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 14px;
+  gap: 16px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   padding: 16px;
-  background: rgba(255, 255, 255, 0.015);
+  background: var(--glass-bg);
 }
 
 .invoiceCell {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   font-size: 13px;
 }
 
@@ -93,13 +104,14 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
+  font-weight: 500;
 }
 
 .primaryButton {
   background: var(--accent);
   color: var(--accent-fg);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 12px 18px;
   font-size: 14px;
   font-weight: 600;
@@ -109,7 +121,7 @@
 }
 
 .primaryButton:hover:not(:disabled) {
-  opacity: 0.88;
+  opacity: 0.9;
 }
 
 .primaryButton:disabled {
@@ -121,7 +133,7 @@
   border: 1px solid rgba(239, 68, 68, 0.35);
   background: var(--danger-dim);
   color: #fca5a5;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 12px 14px;
   font-size: 13px;
 }
@@ -129,11 +141,11 @@
 .pipeline {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   padding: 16px;
-  background: rgba(255, 255, 255, 0.015);
+  background: var(--glass-bg);
 }
 
 .pipelineTitle {
@@ -141,20 +153,21 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
-  margin-bottom: 2px;
+  font-weight: 500;
 }
 
 .pipelineStep {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 12px;
   font-size: 13px;
   color: var(--fg);
+  line-height: 1.5;
 }
 
 .pipelineStep .mark {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: var(--success-dim);
   color: var(--success);
@@ -162,7 +175,10 @@
   align-items: center;
   justify-content: center;
   font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 600;
   flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .badgeRow {
@@ -170,17 +186,19 @@
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  padding-top: 4px;
 }
 
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  border-radius: 6px;
+  border-radius: 999px;
   padding: 5px 10px;
   font-family: var(--font-mono);
+  letter-spacing: 0.02em;
 }
 
 .badgePass {
@@ -200,14 +218,14 @@
   gap: 16px;
   padding: 20px;
   border: 1px solid var(--border);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.015);
+  border-radius: var(--radius-sm);
+  background: var(--glass-bg);
 }
 
 .comparisonCell {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .comparisonCell .value {
@@ -226,7 +244,7 @@
 .factors {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .factor {
@@ -234,13 +252,14 @@
   color: var(--muted);
   padding-left: 16px;
   position: relative;
+  line-height: 1.5;
 }
 
 .factor::before {
   content: "";
   position: absolute;
   left: 2px;
-  top: 8px;
+  top: 9px;
   width: 5px;
   height: 5px;
   border-radius: 50%;
@@ -248,11 +267,11 @@
 }
 
 .outcome {
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   padding: 18px 20px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   border: 1px solid var(--border);
 }
 
@@ -268,7 +287,7 @@
 
 .outcomeLabel {
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -284,6 +303,43 @@
 .fundingRow {
   font-size: 14px;
   color: var(--fg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rateHint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: 6px;
+}
+
+.ownerRow {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ownerBadge {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--success);
+  background: var(--success-dim);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+.ownerBadgeMuted {
+  align-self: flex-start;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--glass-bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
 }
 
 .memo {
@@ -295,9 +351,10 @@
 .chainSection {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   border-top: 1px solid var(--border);
-  padding-top: 18px;
+  padding-top: 24px;
+  margin-top: 4px;
 }
 
 .chainNote {
@@ -320,12 +377,13 @@
 
 .deployResult {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 12px 14px;
   font-size: 13px;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  background: var(--glass-bg);
 }
 
 .deployResult a {
@@ -334,11 +392,15 @@
   word-break: break-all;
 }
 
+.deployResult a:hover {
+  text-decoration: underline;
+}
+
 .deployError {
   border: 1px solid rgba(239, 68, 68, 0.35);
   background: var(--danger-dim);
   color: #fca5a5;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 12px 14px;
   font-size: 13px;
 }

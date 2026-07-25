@@ -1,0 +1,33 @@
+# Judge spec — defended claims for casper_judge.py
+#
+# Every field here is a CLAIM the builder must be able to defend with a file
+# path, a package hash, a tx hash, or a live URL. Inflating these numbers only
+# produces a scorecard that lies to you.
+#
+#   enforced_rejections  count of typed on-chain reverts a test proves
+#   autonomy_level       0 none | 1 human-triggered | 2 scheduled | 3 self-directed loop
+#   human_loop           0-10 how central a human in pain is to the story
+#   retellability        0-10 can a cold judge restate this after the demo
+#   failure_paths        demoed failure/edge cases (not happy path)
+
+name: Invoice Factoring Agent
+grandma_pitch: Get paid today for work your customer will pay for in ninety days.
+named_user: Freelance supplier holding a 90-day unpaid invoice
+painful_moment: Payroll is due Friday and the invoice clears in November
+novel_mechanism: Agent-underwritten receivable note with an on-chain minimum risk score gate
+enforced_rejections: 5
+autonomy_level: 1
+human_loop: 8
+retellability: 9
+failure_paths: 1
+innovation: 5.5
+real_world: 8.0
+ux_design: 5.5
+launch_plans: 2.0
+long_term_impact: 6.5
+demo_video: https://drive.google.com/drive/folders/16cyLNdIimh_xAPC_272pmO_UPxk2PgZw
+live_url: https://casper-invoice-factoring.vercel.app
+socials: false
+mock_in_demo_path: true
+readme_overclaims: false
+competitor_overlap_count: 3

@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import FundNotePanel from "@/components/FundNotePanel";
 import ProofPanel from "@/components/ProofPanel";
 import UnderwritePanel, { OpenedNote } from "@/components/UnderwritePanel";
 import WalletButton from "@/components/WalletButton";
-import { truncateHex } from "@/lib/casper";
+import { explorerDeployUrl, truncateHex } from "@/lib/casper";
 import { UnderwritingResult } from "@/lib/agent-client";
 import { useWallet } from "@/lib/wallet";
 import styles from "@/app/page.module.css";
@@ -18,6 +19,7 @@ interface FlowStep {
   title: string;
   detail: string;
   status: StepStatus;
+  href?: string;
 }
 
 export default function HomeDashboard() {
@@ -25,13 +27,36 @@ export default function HomeDashboard() {
   const [result, setResult] = useState<UnderwritingResult | null>(null);
   const [notes, setNotes] = useState<OpenedNote[]>([]);
 
-  const onNoteOpened = (note: OpenedNote) => setNotes((prev) => [note, ...prev]);
+  const onNoteOpened = useCallback((note: OpenedNote) => {
+    setNotes((prev) => [note, ...prev]);
+  }, []);
+
+  const onNoteFunded = useCallback((noteId: number, fundDeployHash: string) => {
+    setNotes((prev) =>
+      prev.map((n) =>
+        n.noteId === noteId ? { ...n, status: "funded" as const, fundDeployHash } : n
+      )
+    );
+  }, []);
+
+  const onNoteRepaid = useCallback((noteId: number, repayDeployHash: string) => {
+    setNotes((prev) =>
+      prev.map((n) =>
+        n.noteId === noteId ? { ...n, status: "repaid" as const, repayDeployHash } : n
+      )
+    );
+  }, []);
 
   const steps = useMemo((): FlowStep[] => {
     const walletConnected = Boolean(wallet.publicKeyHex);
     const evaluated = Boolean(result);
     const approved = result?.decision.approved ?? false;
     const opened = notes.length > 0;
+    const funded = notes.some((n) => n.status === "funded" || n.status === "repaid");
+    const repaid = notes.some((n) => n.status === "repaid");
+    const latestFundHash = notes.find((n) => n.fundDeployHash)?.fundDeployHash;
+    const latestRepayHash = notes.find((n) => n.repayDeployHash)?.repayDeployHash;
+    const latestOpenHash = notes[0]?.deployHash;
 
     return [
       {
@@ -67,6 +92,29 @@ export default function HomeDashboard() {
           ? `Note ${notes[0].noteId} opened via NoteOpened deploy`
           : "Owner calls open_note(note_id, seller, face_value, risk_score, hash)",
         status: opened ? "complete" : approved ? "active" : "pending",
+        href: latestOpenHash ? explorerDeployUrl(latestOpenHash) : undefined,
+      },
+      {
+        id: "fund",
+        title: "Investor funds note",
+        detail: funded
+          ? `NoteFunded deploy: escrow forwarded CSPR to seller`
+          : opened
+            ? "Investor attaches exact face value via payable fund_note"
+            : "Waiting for an open note",
+        status: funded ? "complete" : opened ? "active" : "pending",
+        href: latestFundHash ? explorerDeployUrl(latestFundHash) : undefined,
+      },
+      {
+        id: "repay",
+        title: "Owner marks note repaid",
+        detail: repaid
+          ? `NoteRepaid deploy closed the lifecycle`
+          : funded
+            ? "Owner calls mark_repaid after debtor settles off-chain"
+            : "Waiting for funding",
+        status: repaid ? "complete" : funded ? "active" : "pending",
+        href: latestRepayHash ? explorerDeployUrl(latestRepayHash) : undefined,
       },
       {
         id: "proof",
@@ -74,7 +122,7 @@ export default function HomeDashboard() {
         detail: opened
           ? `${notes.length} note deploy(s) live on testnet.cspr.live`
           : "Deploy hash links to the settled note on the explorer",
-        status: opened ? "complete" : "pending",
+        status: repaid ? "complete" : opened ? "pending" : "pending",
       },
     ];
   }, [notes, result, wallet.publicKeyHex]);
@@ -116,7 +164,18 @@ export default function HomeDashboard() {
             <span className={styles.stepMark}>{index + 1}</span>
             <div className={styles.stepBody}>
               <span className={styles.stepTitle}>{step.title}</span>
-              <span className={styles.stepDetail}>{step.detail}</span>
+              {step.href ? (
+                <a
+                  className={styles.stepDetailLink}
+                  href={step.href}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {step.detail}
+                </a>
+              ) : (
+                <span className={styles.stepDetail}>{step.detail}</span>
+              )}
             </div>
           </li>
         ))}
@@ -124,6 +183,7 @@ export default function HomeDashboard() {
 
       <div className={styles.grid}>
         <UnderwritePanel onEvaluated={setResult} onNoteOpened={onNoteOpened} />
+        <FundNotePanel notes={notes} onNoteFunded={onNoteFunded} onNoteRepaid={onNoteRepaid} />
         <ProofPanel notes={notes} />
       </div>
 
