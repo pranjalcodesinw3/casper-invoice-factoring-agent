@@ -55,7 +55,7 @@ app.use((req: Request, res: Response, next) => {
 
 const underwriter = createUnderwriter({
   node: {
-    rpcUrl: process.env.CASPER_NODE_ADDRESS ?? "https://node.testnet.cspr.cloud/rpc",
+    rpcUrl: process.env.CASPER_NODE_ADDRESS ?? "https://node.testnet.casper.network/rpc",
     accessKey: process.env.CSPR_CLOUD_ACCESS_KEY,
     contractHash: CONTRACT_HASH,
   },

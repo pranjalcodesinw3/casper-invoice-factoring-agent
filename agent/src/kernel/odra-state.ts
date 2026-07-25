@@ -40,24 +40,59 @@ export class OdraStateClient {
     }
   }
 
-  async rpc<T>(method: string, params: unknown): Promise<T> {
-    let res: Response;
-    try {
-      res = await fetch(this.cfg.rpcUrl, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...(this.cfg.accessKey ? { authorization: this.cfg.accessKey } : {}),
-        },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-      });
-    } catch (err) {
-      throw new Error(
-        `cannot reach Casper node at ${this.cfg.rpcUrl}: ${
-          err instanceof Error ? err.message : String(err)
-        }`
-      );
+  /**
+   * POSTs to the node, retrying only on 429 and 5xx.
+   *
+   * A shared public RPC rate-limits under load, and a single 429 is not a
+   * reason for an agent to conclude it cannot verify a policy: that is a
+   * transient answer being read as a permanent one. Retries are bounded and
+   * backoff is exponential, so a node that is genuinely down still surfaces as
+   * an error rather than hanging the request.
+   *
+   * 4xx other than 429 is not retried. A malformed request does not become
+   * well-formed by being sent again.
+   */
+  private async fetchWithRetry(
+    method: string,
+    params: unknown,
+    attempts = 4
+  ): Promise<Response> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      if (attempt > 0) {
+        // 250ms, 500ms, 1s. Short enough to stay inside a request, long enough
+        // to clear a per-second limiter.
+        await new Promise((r) => setTimeout(r, 250 * 2 ** (attempt - 1)));
+      }
+      try {
+        const res = await fetch(this.cfg.rpcUrl, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...(this.cfg.accessKey ? { authorization: this.cfg.accessKey } : {}),
+          },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+        });
+        if (res.status === 429 || res.status >= 500) {
+          lastError = new Error(`node returned HTTP ${res.status} for ${method}`);
+          continue;
+        }
+        return res;
+      } catch (err) {
+        lastError = new Error(
+          `cannot reach Casper node at ${this.cfg.rpcUrl}: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
     }
+
+    throw lastError ?? new Error(`${method} failed for an unknown reason`);
+  }
+
+  async rpc<T>(method: string, params: unknown): Promise<T> {
+    const res = await this.fetchWithRetry(method, params);
     if (!res.ok) {
       throw new Error(`node returned HTTP ${res.status} for ${method}`);
     }
