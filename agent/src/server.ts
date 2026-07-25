@@ -1,22 +1,51 @@
-import express, { Request, Response } from "express";
+/**
+ * HTTP surface for the underwriting agent.
+ *
+ * The old endpoints took `min_risk_score` from the request body and defaulted
+ * it to 50 when absent, so a caller could underwrite against whatever bar they
+ * fancied by posting `{min_risk_score: 0}`. It never mattered on-chain, because
+ * `open_note` reverts `RiskTooHigh` against the contract's own minimum, but it
+ * meant the API cheerfully told callers a note was approved that the chain
+ * would reject. The acceptance bar now comes from the deployed contract.
+ *
+ * The agent produces an unsigned deploy. Only the escrow owner's key can turn
+ * it into a note, and the contract re-checks the risk score and note uniqueness
+ * independently, so exposing underwriting publicly moves no money.
+ */
+import express, { type Request, type Response } from "express";
 import dotenv from "dotenv";
-import { runUnderwriting } from "./agent";
-import {
-  buildOpenNoteDeploy,
-  mapNoteArgsToContract,
-} from "./contract-client";
-import { Invoice } from "./underwriting";
+import { z } from "zod";
+import { createUnderwriter } from "./underwriter";
+import { DeployNoteProposer } from "./note-proposer";
 
 dotenv.config();
 
 const app = express();
+
+const CONTRACT_HASH =
+  process.env.CONTRACT_HASH ??
+  "hash-1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec";
+
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+function originAllowed(origin?: string): boolean {
+  if (!origin) return false;
+  if (origin.startsWith("http://localhost") || origin.startsWith("http://127.0.0.1")) {
+    return true;
+  }
+  return ALLOWED_ORIGINS.includes(origin);
+}
+
 app.use(express.json());
 
-// CORS for localhost:3000 frontend
 app.use((req: Request, res: Response, next) => {
   const origin = req.headers.origin;
-  if (origin === "http://localhost:3000" || origin === "http://127.0.0.1:3000") {
-    res.set("Access-Control-Allow-Origin", origin);
+  if (originAllowed(origin)) {
+    res.set("Access-Control-Allow-Origin", origin as string);
+    res.set("Vary", "Origin");
     res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     res.set("Access-Control-Allow-Headers", "Content-Type");
   }
@@ -24,147 +53,96 @@ app.use((req: Request, res: Response, next) => {
   next();
 });
 
-app.post("/api/underwrite", async (req: Request, res: Response) => {
-  try {
-    const { invoice, debtor_id, min_risk_score } = req.body;
-
-    if (!invoice || !debtor_id) {
-      return res.status(400).json({
-        error: "Missing required fields: invoice, debtor_id",
-      });
-    }
-
-    if (
-      !invoice.invoice_id ||
-      typeof invoice.debtor_name !== "string" ||
-      typeof invoice.face_value !== "number" ||
-      typeof invoice.days_overdue !== "number"
-    ) {
-      return res.status(400).json({
-        error: "Invalid invoice structure",
-      });
-    }
-
-    const minScore = min_risk_score || 50;
-    const riskProviderUrl = process.env.RISK_PROVIDER_URL || "http://localhost:4031";
-
-    const result = await runUnderwriting(
-      invoice as Invoice,
-      debtor_id,
-      minScore,
-      riskProviderUrl
-    );
-
-    res.json(result);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error("[Server] Error:", message);
-    res.status(500).json({ error: message });
-  }
+const underwriter = createUnderwriter({
+  node: {
+    rpcUrl: process.env.CASPER_NODE_ADDRESS ?? "https://node.testnet.cspr.cloud/rpc",
+    accessKey: process.env.CSPR_CLOUD_ACCESS_KEY,
+    contractHash: CONTRACT_HASH,
+  },
+  openai: {
+    apiKey: process.env.OPENROUTER_API_KEY ?? "",
+    baseURL: process.env.OPENROUTER_BASE_URL,
+    model: process.env.OPENROUTER_MODEL,
+  },
+  risk: {
+    baseUrl: process.env.RISK_PROVIDER_URL ?? "http://localhost:4031",
+    secret: process.env.RISK_PROVIDER_SECRET ?? "",
+  },
 });
 
 /**
- * Underwrite an invoice, map noteArgs to contract types (u64 note_id, Address seller),
- * and return a signable open_note deploy for CSPR.click.
+ * Note what is absent: min_risk_score. The contract holds it.
+ *
+ * .strict() rather than zod's default of stripping unknown keys, so a caller
+ * still sending min_risk_score is told the field is gone instead of having it
+ * silently dropped while they believe it is controlling the decision.
  */
-app.post("/api/run-agent-action", async (req: Request, res: Response) => {
+const UnderwriteSchema = z
+  .object({
+    invoice: z
+      .object({
+        invoice_id: z.string().min(1),
+        debtor_name: z.string().min(1),
+        face_value: z.number().positive(),
+        days_overdue: z.number().min(0),
+      })
+      .strict(),
+    debtor_id: z.string().min(1),
+    seller_pubkey: z.string().min(2),
+    caller_pubkey: z.string().min(2),
+  })
+  .strict();
+
+app.get("/health", (_req: Request, res: Response) => {
+  res.json({ status: "ok", service: "invoice-factoring-agent" });
+});
+
+app.post("/api/underwrite", async (req: Request, res: Response) => {
+  const parsed = UnderwriteSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: "Invalid request",
+      details: parsed.error.errors,
+      hint:
+        "min_risk_score is no longer accepted: the acceptance bar is a term of " +
+        "the contract and is read from it",
+    });
+  }
+
+  const { invoice, debtor_id, seller_pubkey, caller_pubkey } = parsed.data;
+
   try {
-    const {
-      invoice,
-      debtor_id,
-      seller_pubkey,
-      caller_pubkey,
-      min_risk_score,
-    } = req.body;
+    const proposer = new DeployNoteProposer(CONTRACT_HASH, caller_pubkey);
+    const request =
+      `Underwrite invoice ${invoice.invoice_id} from debtor ${debtor_id}. ` +
+      `Face value ${invoice.face_value} CSPR, ${invoice.days_overdue} days overdue. ` +
+      `The seller's Casper public key is ${seller_pubkey}. ` +
+      `Open a note if and only if the contract's own terms allow it.`;
 
-    if (!invoice || !debtor_id) {
-      return res.status(400).json({
-        error: "Missing required fields: invoice, debtor_id",
-      });
-    }
-    if (!seller_pubkey || typeof seller_pubkey !== "string") {
-      return res.status(400).json({
-        error: "Missing required field: seller_pubkey (Casper public key hex for seller Address)",
-      });
-    }
-    if (!caller_pubkey || typeof caller_pubkey !== "string") {
-      return res.status(400).json({
-        error: "Missing required field: caller_pubkey (contract owner wallet public key hex)",
-      });
-    }
-
-    const contractHash = process.env.CONTRACT_HASH;
-    if (!contractHash) {
-      return res.status(503).json({
-        error: "CONTRACT_HASH is not configured on the agent server",
-      });
-    }
-
-    if (
-      !invoice.invoice_id ||
-      typeof invoice.debtor_name !== "string" ||
-      typeof invoice.face_value !== "number" ||
-      typeof invoice.days_overdue !== "number"
-    ) {
-      return res.status(400).json({ error: "Invalid invoice structure" });
-    }
-
-    const minScore = min_risk_score || 50;
-    const riskProviderUrl = process.env.RISK_PROVIDER_URL || "http://localhost:4031";
-
-    const underwriting = await runUnderwriting(
-      invoice as Invoice,
-      debtor_id,
-      minScore,
-      riskProviderUrl
-    );
-
-    if (!underwriting.decision.approved) {
-      return res.status(422).json({
-        error: "Underwriting declined",
-        underwriting,
-      });
-    }
-
-    if (!underwriting.noteArgs) {
-      return res.status(500).json({
-        error: "Approved underwriting did not produce note args",
-        underwriting,
-      });
-    }
-
-    const contractArgs = mapNoteArgsToContract(
-      underwriting.noteArgs,
-      seller_pubkey,
-      underwriting.decision.fundingAmount
-    );
-
-    const prepared = buildOpenNoteDeploy(
-      contractHash,
-      caller_pubkey,
-      contractArgs
-    );
+    const result = await underwriter.run(request, proposer);
 
     res.json({
-      underwriting,
-      contractArgs,
-      deployJson: prepared.deployJson,
-      deployHashHex: prepared.deployHashHex,
+      finalText: result.finalText,
+      trace: result.trace,
+      steps: result.steps,
+      toolCalls: result.toolCalls,
+      noteProposed: result.noteProposed,
+      escrowTerms: result.escrowTerms,
+      deploy: proposer.lastDeployJson,
       explanation:
-        "Underwriting approved. Sign and submit the open_note deploy with the contract owner key.",
+        result.noteProposed && proposer.lastDeployJson
+          ? "The escrow owner must sign the deploy before it reaches the chain."
+          : "No note was proposed; see finalText for the clause that blocked it.",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error("[Server] run-agent-action error:", message);
+    console.error("[server] underwrite failed:", message);
     res.status(500).json({ error: message });
   }
 });
 
-app.get("/health", (_req: Request, res: Response) => {
-  res.json({ status: "ok", service: "agent-server" });
-});
-
-const PORT = process.env.SERVER_PORT || 4030;
+const PORT = process.env.PORT || process.env.SERVER_PORT || 4030;
 app.listen(PORT, () => {
-  console.log(`Agent server running on port ${PORT}`);
+  console.log(`[server] Invoice factoring agent on http://localhost:${PORT}`);
+  console.log(`[server] POST /api/underwrite {invoice, debtor_id, seller_pubkey, caller_pubkey}`);
 });
