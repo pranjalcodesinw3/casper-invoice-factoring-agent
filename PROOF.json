@@ -1,7 +1,7 @@
 {
   "network": "casper-test",
   "node": "https://node.testnet.casper.network/rpc",
-  "generatedAt": "2026-07-25T21:23:48.430Z",
+  "generatedAt": "2026-07-25T21:25:49.632Z",
   "packageHash": "1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec",
   "contractHash": "984243631528b25918c69364ba6c28893b061d1c90858e1872b7c8c0f56a8cb8",
   "explorer": "https://testnet.cspr.live/contract-package/1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec",
@@ -17,7 +17,7 @@
     {
       "name": "open_note (accepted, risk 80 >= min 50)",
       "entryPoint": "open_note",
-      "deploy": "3d4ead5c9d509e7bb01c1efe1a5ca5abe9467a87c1d4707b791def7d1e1389af",
+      "deploy": "e09ad580159e2a6c66bb09e408c2153b1eed3c2cfc023b298fe45ef623022051",
       "result": "ok",
       "errorCode": null,
       "errorName": null,
@@ -27,7 +27,7 @@
     {
       "name": "open_note (risk 10 < min 50)",
       "entryPoint": "open_note",
-      "deploy": "14bd6f94a17d1ddb07e70eab5fc09993e41d77239e879fcb92441642458645c6",
+      "deploy": "ffd87d1929d92da2c71e0f891fbd1d092cf13bb3a16221e2a65b02e06883ddd9",
       "result": "reverted",
       "errorCode": 3,
       "errorName": "RiskTooHigh",
@@ -37,7 +37,7 @@
     {
       "name": "open_note (duplicate id)",
       "entryPoint": "open_note",
-      "deploy": "e20233b8834eff491ba357f61cbf92d29b17f158c4a848998603fe5ab28858fc",
+      "deploy": "8cfa58a15205f1a047eacb4648ba11e52a1242ffe1ec7dd8fc97124f1e33e765",
       "result": "reverted",
       "errorCode": 2,
       "errorName": "NoteExists",
@@ -47,7 +47,7 @@
     {
       "name": "fund_note (no such note)",
       "entryPoint": "fund_note",
-      "deploy": "b1b5994a1c3109385b05fd6cd2993ecb48f1afef7126557a8d6fe70eb99c191c",
+      "deploy": "341fee9bd9cfb0ddf7c5be227fd272484e67897ff75759026c1ed08ab04c5774",
       "result": "reverted",
       "errorCode": 4,
       "errorName": "NoNote",
@@ -57,7 +57,7 @@
     {
       "name": "fund_note (0.5 CSPR against a 1 CSPR note)",
       "entryPoint": "fund_note",
-      "deploy": "1c1e83310fb58e9708e65a5afa4deb711c659c853fa63be51e1f79c86454d5a0",
+      "deploy": "eca04e20cedd59fb1ec108fa8bbc4c22a0bbd0f0cc135f335c8a5b701fae2d21",
       "result": "reverted",
       "errorCode": 6,
       "errorName": "WrongAmount",
@@ -67,7 +67,7 @@
     {
       "name": "mark_repaid (note still open)",
       "entryPoint": "mark_repaid",
-      "deploy": "9fcde99484c97c5d3088a51e4209ed88441a2b0e21cfcfd7fa98aa9e0c4d9103",
+      "deploy": "7282fcc69456074f53f83f8269164a4609f146bff619fd3d15c1c5126da608c4",
       "result": "reverted",
       "errorCode": 7,
       "errorName": "NotFunded",
@@ -77,7 +77,7 @@
     {
       "name": "fund_note (exact amount)",
       "entryPoint": "fund_note",
-      "deploy": "05c6e12a31de61da563dff085bef91dbf0de600da437c23fef3f8e48a1e101cb",
+      "deploy": "2233b2d0216adaf8eff0b6dc697e076590f68e6762acce21c210e6d94b528b88",
       "result": "ok",
       "errorCode": null,
       "errorName": null,
@@ -87,7 +87,7 @@
     {
       "name": "mark_repaid (after funding)",
       "entryPoint": "mark_repaid",
-      "deploy": "de59f0bdaab49adc0deb2a390d221f513d98dc8db86bbf6a315041ab2aa5a4b0",
+      "deploy": "f44454033fa3bab01fed57480842bc4fdf05fdaac9219e40668aa17937befcbb",
       "result": "ok",
       "errorCode": null,
       "errorName": null,

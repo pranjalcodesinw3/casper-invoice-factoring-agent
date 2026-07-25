@@ -81,23 +81,57 @@ Casper **testnet** (`casper-test`).
 | Package | `1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec` | [contract-package](https://testnet.cspr.live/contract-package/1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec) — resolves |
 | Contract | `984243631528b25918c69364ba6c28893b061d1c90858e1872b7c8c0f56a8cb8` | live |
 
-**The contract has no transaction activity yet.** The explorer reports "No
-activity to display" for this package. It is deployed and readable; no
-`open_note` or `fund_note` has been executed on chain. This README claims
-deployment and nothing more.
+**The full lifecycle executes on chain.** A note is opened, funded with real
+CSPR, and marked repaid, and every refusal path reverts with its own typed
+error code. Every hash below is in [`PROOF.json`](PROOF.json) and is
+reproducible with one command:
 
-That is the honest state, and it is the single biggest gap in this project. The
-underwriting logic, the refusal paths and the contract invariants are covered by
-23 passing tests; none of that is the same as a settled note on a live network.
+```bash
+cd agent && CASPER_NODE_URL=https://node.testnet.casper.network/rpc \
+  OWNER_SECRET_KEY_PATH=/path/to/secret_key.pem npx tsx scripts/prove.ts
+```
+
+| Step | Deploy | Result |
+|---|---|---|
+| `open_note` (risk 80 ≥ min 50) | [`e09ad580…`](https://testnet.cspr.live/deploy/e09ad580159e2a6c66bb09e408c2153b1eed3c2cfc023b298fe45ef623022051) | executed |
+| `fund_note` (exact 1 CSPR) | [`2233b2d0…`](https://testnet.cspr.live/deploy/2233b2d0216adaf8eff0b6dc697e076590f68e6762acce21c210e6d94b528b88) | **executed**, block 8624223 |
+| `mark_repaid` (after funding) | [`f4445403…`](https://testnet.cspr.live/deploy/f44454033fa3bab01fed57480842bc4fdf05fdaac9219e40668aa17937befcbb) | **executed**, block 8624224 |
+| `open_note` (risk 10 < min 50) | [`ffd87d19…`](https://testnet.cspr.live/deploy/ffd87d1929d92da2c71e0f891fbd1d092cf13bb3a16221e2a65b02e06883ddd9) | reverted **3 RiskTooHigh** |
+| `open_note` (duplicate id) | [`8cfa58a1…`](https://testnet.cspr.live/deploy/8cfa58a15205f1a047eacb4648ba11e52a1242ffe1ec7dd8fc97124f1e33e765) | reverted **2 NoteExists**, block 8624216 |
+| `fund_note` (no such note) | [`341fee9b…`](https://testnet.cspr.live/deploy/341fee9bd9cfb0ddf7c5be227fd272484e67897ff75759026c1ed08ab04c5774) | reverted **4 NoNote**, block 8624217 |
+| `fund_note` (0.5 against a 1 CSPR note) | [`eca04e20…`](https://testnet.cspr.live/deploy/eca04e20cedd59fb1ec108fa8bbc4c22a0bbd0f0cc135f335c8a5b701fae2d21) | reverted **6 WrongAmount**, block 8624219 |
+| `mark_repaid` (note still open) | [`7282fcc6…`](https://testnet.cspr.live/deploy/7282fcc69456074f53f83f8269164a4609f146bff619fd3d15c1c5126da608c4) | reverted **7 NotFunded**, block 8624221 |
+
+Five distinct enforced rejection codes (2, 3, 4, 6, 7), each from a scenario
+built so exactly one clause can fail, which is what makes the code
+attributable. A revert whose code is at or above Odra's `MaxUserError`
+(64535) is *not* counted: those are argument-deserializer or runtime failures
+that never reached contract logic. `Insufficient funds` is likewise not a
+failure path; it means the account was broke, not that the contract enforced
+anything.
+
+### Funding a `payable` entrypoint
+
+`fund_note` is `#[odra(payable)]`, and this is the part that is easy to get
+wrong. Odra does **not** read an `amount` runtime argument. It reads a
+`cargo_purse` URef, and a plain account cannot create a purse, so a
+`ContractCallBuilder` call can never fund a payable entrypoint: it silently
+arrives with `attached_value() == 0` and reverts `WrongAmount` no matter what
+you send. Funding requires a session-wasm deploy of Odra's
+`proxy_caller_with_return.wasm` with `package_hash`, `entry_point`, `args`,
+`attached_value` and `amount`. See `agent/scripts/prove.ts`.
 
 ---
 
 ## Honest limits
 
-- **No executed flow on chain.** See above. Deployment is proven; execution is not.
 - **The debtor set is a fixture.** `agent/src/debtors.json` and `invoices.json`
   are sample data. There is no integration with an accounting system, an
-  invoicing platform, or a credit bureau.
+  invoicing platform, or a credit bureau. No public credit bureau exists to
+  call for these debtors, so the fixture stands in for one. It is kept out of
+  the critical path: the acceptance bar itself is read from the contract
+  (`get_min_risk_score`) and re-enforced on chain, so a tampered fixture
+  cannot open a note the contract would refuse.
 - **The risk score is signed by our own provider**, with a shared HMAC secret.
   It is a working payment-and-signature handshake, not an independent credit
   oracle, and a third party cannot verify a report from the chain alone.
