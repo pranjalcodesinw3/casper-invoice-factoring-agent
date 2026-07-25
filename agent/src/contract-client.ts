@@ -1,13 +1,10 @@
 import crypto from "crypto";
-import {
-  Args,
-  CLValue,
-  ContractCallBuilder,
-  Deploy,
-  Key,
-  PublicKey,
-} from "casper-js-sdk";
+import * as casperSdk from "casper-js-sdk";
+import type { Key } from "casper-js-sdk";
 import { NoteArgs } from "./types";
+
+const { Args, CLValue, ContractCallBuilder, Deploy, Key: KeyCtor, PublicKey } =
+  casperSdk;
 
 export const CHAIN_NAME = "casper-test";
 export const OPEN_NOTE_PAYMENT_MOTES = 3_000_000_000;
@@ -40,10 +37,13 @@ export function invoiceIdToNoteId(noteIdString: string): number {
 export function sellerToAddressKey(seller: string): Key {
   const trimmed = seller.trim();
   if (trimmed.startsWith("account-hash-")) {
-    return Key.newKey(trimmed);
+    return KeyCtor.newKey(trimmed);
   }
   const publicKey = PublicKey.fromHex(trimmed);
-  return Key.newKey(publicKey.accountHash().toJSON());
+  // `AccountHash.toJSON()` renders "account-hash<hex>" with no hyphen, which
+  // `Key.newKey` then rejects as an unknown prefix. `toPrefixedString()` is the
+  // one that emits the canonical "account-hash-<hex>" form.
+  return KeyCtor.newKey(publicKey.accountHash().toPrefixedString());
 }
 
 export function csprToMotes(cspr: number): string {

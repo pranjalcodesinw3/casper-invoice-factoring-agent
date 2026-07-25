@@ -10,7 +10,9 @@
     "cli:risky": "tsx src/cli.ts risky",
     "typecheck": "tsc --noEmit",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "e2e": "tsx src/e2e.ts good",
+    "e2e:risky": "tsx src/e2e.ts risky"
   },
   "dependencies": {
     "express": "^4.18.2",
