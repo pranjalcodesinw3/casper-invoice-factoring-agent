@@ -3,6 +3,7 @@
 extern crate alloc;
 
 pub mod receivable_escrow;
+pub mod underwriter_bond;
 
 #[cfg(test)]
 mod tests;

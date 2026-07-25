@@ -100,7 +100,7 @@ than deleted.
 
 ## How to reach us
 
-- **Bugs, questions and security reports:** [GitHub Issues](https://github.com/kamalbuilds/casper-invoice-factoring-agent/issues)
+- **Bugs, questions and security reports:** [GitHub Issues](https://github.com/pranjalcodesinw3/casper-invoice-factoring-agent/issues)
 - **Live demo:** [casper-invoice-factoring.vercel.app](https://casper-invoice-factoring.vercel.app)
 
 We do not have an X account or a Discord server. Rather than register a handle

@@ -63,12 +63,12 @@ live_url: https://casper-invoice-factoring.vercel.app
 # NOT an X handle. We have no X account and no Discord, and registering one
 # with zero posts to satisfy a scorer would be a dead link a judge clicks.
 # This points at a channel that genuinely exists and is open right now:
-#   https://github.com/kamalbuilds/casper-invoice-factoring-agent/issues  (open, returns 200)
+#   https://github.com/pranjalcodesinw3/casper-invoice-factoring-agent/issues  (open, returns 200)
 # Discussions is not enabled on this repo because it is not under our
 # account; Issues is open and is the real channel.
 # Linked from README.md and ROADMAP.md. ROADMAP.md carries the dated,
 # costed milestones and says which of them have no on-chain proof yet.
-socials: https://github.com/kamalbuilds/casper-invoice-factoring-agent/issues
+socials: https://github.com/pranjalcodesinw3/casper-invoice-factoring-agent/issues
 
 # Was true, and it was correct at the time: the contract had zero transaction
 # activity and every enforcement claim rested on unit tests. PROOF.json now

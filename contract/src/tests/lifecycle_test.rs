@@ -8,11 +8,11 @@ use odra::casper_types::U512;
 use odra::host::HostRef;
 
 use crate::receivable_escrow::{Error, NoteRepaid};
-use crate::tests::harness::{risk_hash, setup, INVESTOR, OWNER, SELLER, STRANGER};
+use crate::tests::harness::{risk_hash, setup_bonded, INVESTOR, OWNER, SELLER, STRANGER};
 
 #[test]
 fn mark_repaid_after_funding_emits_event() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
     let investor = env.get_account(INVESTOR);
     let face_value = U512::from(2_500u64);
@@ -32,7 +32,7 @@ fn mark_repaid_after_funding_emits_event() {
 
 #[test]
 fn mark_repaid_reverts_when_not_funded() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
 
     env.set_caller(env.get_account(OWNER));
@@ -43,7 +43,7 @@ fn mark_repaid_reverts_when_not_funded() {
 
 #[test]
 fn mark_repaid_reverts_for_missing_note() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
 
     env.set_caller(env.get_account(OWNER));
     assert_eq!(contract.try_mark_repaid(999), Err(Error::NoNote.into()));
@@ -53,7 +53,7 @@ fn mark_repaid_reverts_for_missing_note() {
 /// a note repaid more times than it was funded.
 #[test]
 fn a_note_cannot_be_repaid_twice() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
     let investor = env.get_account(INVESTOR);
     let face_value = U512::from(2_000u64);
@@ -77,7 +77,7 @@ fn a_note_cannot_be_repaid_twice() {
 /// note whose obligation had already been settled.
 #[test]
 fn a_repaid_note_cannot_be_funded_again() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
     let investor = env.get_account(INVESTOR);
     let latecomer = env.get_account(STRANGER);
@@ -103,7 +103,7 @@ fn a_repaid_note_cannot_be_funded_again() {
 /// note repaid would be marking their own homework.
 #[test]
 fn only_the_owner_can_mark_a_note_repaid() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
     let investor = env.get_account(INVESTOR);
     let face_value = U512::from(2_000u64);
@@ -129,7 +129,7 @@ fn only_the_owner_can_mark_a_note_repaid() {
 /// The one legal path, end to end, asserted on state rather than on events.
 #[test]
 fn the_full_lifecycle_walks_open_then_funded_then_repaid() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
     let investor = env.get_account(INVESTOR);
     let face_value = U512::from(3_000u64);
@@ -159,7 +159,7 @@ fn the_full_lifecycle_walks_open_then_funded_then_repaid() {
 /// would show up here and nowhere else.
 #[test]
 fn notes_do_not_interfere_with_each_other() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
     let investor = env.get_account(INVESTOR);
 

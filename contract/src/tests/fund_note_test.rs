@@ -10,11 +10,11 @@ use odra::host::HostRef;
 use odra::prelude::Addressable;
 
 use crate::receivable_escrow::{Error, NoteFunded};
-use crate::tests::harness::{risk_hash, setup, INVESTOR, OWNER, SELLER, STRANGER};
+use crate::tests::harness::{risk_hash, setup_bonded, INVESTOR, OWNER, SELLER, STRANGER};
 
 #[test]
 fn fund_note_with_correct_amount_pays_seller_and_emits_event() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
     let investor = env.get_account(INVESTOR);
     let face_value = U512::from(5_000u64);
@@ -52,7 +52,7 @@ fn fund_note_with_correct_amount_pays_seller_and_emits_event() {
 /// be silently short-changed and the difference would sit in the contract.
 #[test]
 fn the_escrow_keeps_nothing_it_forwards_the_entire_face_value() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
     let investor = env.get_account(INVESTOR);
     let face_value = U512::from(7_777u64);
@@ -80,7 +80,7 @@ fn the_escrow_keeps_nothing_it_forwards_the_entire_face_value() {
 
 #[test]
 fn fund_note_reverts_on_wrong_amount() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
     let investor = env.get_account(INVESTOR);
     let face_value = U512::from(5_000u64);
@@ -100,7 +100,7 @@ fn fund_note_reverts_on_wrong_amount() {
 /// would forward 6000 to the seller and quietly overpay from the investor.
 #[test]
 fn overpaying_is_refused_just_like_underpaying() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
     let investor = env.get_account(INVESTOR);
     let face_value = U512::from(5_000u64);
@@ -126,7 +126,7 @@ fn overpaying_is_refused_just_like_underpaying() {
 /// A refused funding must move no money and leave the note fundable.
 #[test]
 fn a_refused_funding_moves_no_money_and_leaves_the_note_open() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
     let investor = env.get_account(INVESTOR);
     let face_value = U512::from(5_000u64);
@@ -152,7 +152,7 @@ fn a_refused_funding_moves_no_money_and_leaves_the_note_open() {
 
 #[test]
 fn fund_note_reverts_when_already_funded() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
     let investor = env.get_account(INVESTOR);
     let second_investor = env.get_account(STRANGER);
@@ -176,7 +176,7 @@ fn fund_note_reverts_when_already_funded() {
 /// recorded investor.
 #[test]
 fn a_second_investor_cannot_displace_the_first_or_pay_twice() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
     let investor = env.get_account(INVESTOR);
     let latecomer = env.get_account(STRANGER);
@@ -207,7 +207,7 @@ fn a_second_investor_cannot_displace_the_first_or_pay_twice() {
 
 #[test]
 fn fund_note_reverts_for_missing_note() {
-    let (env, contract) = setup();
+    let (env, contract) = setup_bonded();
 
     env.set_caller(env.get_account(INVESTOR));
     assert_eq!(
@@ -223,7 +223,7 @@ fn fund_note_reverts_for_missing_note() {
 /// `assert_owner` here would quietly turn the product into a single-party one.
 #[test]
 fn funding_is_permissionless_any_account_may_be_the_investor() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
     let stranger = env.get_account(STRANGER);
     let face_value = U512::from(1_500u64);

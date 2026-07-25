@@ -192,5 +192,5 @@ Demo of Invoice Factoring Agent on Casper testnet.
 An agent fetches a signed risk report, underwrites an invoice, opens a
 receivable note when approved, and funds the exact face value on-chain.
 
-Repo: https://github.com/kamalbuilds/casper-invoice-factoring-agent
+Repo: https://github.com/pranjalcodesinw3/casper-invoice-factoring-agent
 ```

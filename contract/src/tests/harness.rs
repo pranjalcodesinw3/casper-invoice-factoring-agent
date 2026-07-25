@@ -7,7 +7,8 @@
 //! test file that hardcodes 50 would still pass if the contract's default
 //! changed underneath it.
 
-use odra::host::{Deployer, HostEnv};
+use odra::casper_types::U512;
+use odra::host::{Deployer, HostEnv, HostRef};
 
 use crate::receivable_escrow::{
     ReceivableEscrow, ReceivableEscrowHostRef, ReceivableEscrowInitArgs,
@@ -15,6 +16,9 @@ use crate::receivable_escrow::{
 
 /// The minimum acceptable risk score the escrow is initialised with.
 pub const MIN_RISK_SCORE: u64 = 50;
+
+/// The collateral an underwriter must stake before it may open notes.
+pub const MIN_BOND: u64 = 10_000u64;
 
 /// Account 0 deploys and therefore owns the escrow.
 pub const OWNER: usize = 0;
@@ -33,8 +37,22 @@ pub fn setup() -> (HostEnv, ReceivableEscrowHostRef) {
         &env,
         ReceivableEscrowInitArgs {
             min_risk_score: MIN_RISK_SCORE,
+            min_bond: U512::from(MIN_BOND),
         },
     );
+    (env, contract)
+}
+
+/// Deploys an escrow whose owner has already staked the minimum bond.
+///
+/// Most tests care about note behaviour rather than about bonding, and an
+/// unbonded owner cannot open notes at all, so this is the default starting
+/// point. Tests that are specifically about the bond gate use `setup()` and
+/// stake explicitly.
+pub fn setup_bonded() -> (HostEnv, ReceivableEscrowHostRef) {
+    let (env, contract) = setup();
+    env.set_caller(env.get_account(OWNER));
+    contract.with_tokens(U512::from(MIN_BOND)).post_bond();
     (env, contract)
 }
 

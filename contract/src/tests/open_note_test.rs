@@ -7,18 +7,18 @@
 use odra::casper_types::U512;
 
 use crate::receivable_escrow::{Error, NoteOpened};
-use crate::tests::harness::{risk_hash, setup, MIN_RISK_SCORE, OWNER, SELLER, STRANGER};
+use crate::tests::harness::{risk_hash, setup_bonded, MIN_RISK_SCORE, OWNER, SELLER, STRANGER};
 
 #[test]
 fn init_sets_owner_and_min_risk_score() {
-    let (env, contract) = setup();
+    let (env, contract) = setup_bonded();
     assert_eq!(contract.get_owner(), env.get_account(OWNER));
     assert_eq!(contract.get_min_risk_score(), MIN_RISK_SCORE);
 }
 
 #[test]
 fn open_note_with_acceptable_risk_emits_event() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
     let face_value = U512::from(10_000u64);
 
@@ -47,7 +47,7 @@ fn open_note_with_acceptable_risk_emits_event() {
 
 #[test]
 fn open_note_reverts_when_risk_too_high() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
 
     env.set_caller(env.get_account(OWNER));
@@ -66,7 +66,7 @@ fn open_note_reverts_when_risk_too_high() {
 /// only a test that lands exactly on the threshold can tell the difference.
 #[test]
 fn the_risk_gate_is_inclusive_at_the_minimum_and_exclusive_below_it() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
     env.set_caller(env.get_account(OWNER));
 
@@ -99,7 +99,7 @@ fn the_risk_gate_is_inclusive_at_the_minimum_and_exclusive_below_it() {
 
 #[test]
 fn open_note_reverts_on_duplicate_note_id() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
 
     env.set_caller(env.get_account(OWNER));
@@ -115,7 +115,7 @@ fn open_note_reverts_on_duplicate_note_id() {
 /// an underwriter could re-price a note after an investor had read it.
 #[test]
 fn a_rejected_duplicate_leaves_the_original_note_untouched() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
     let stranger = env.get_account(STRANGER);
 
@@ -141,7 +141,7 @@ fn a_rejected_duplicate_leaves_the_original_note_untouched() {
 
 #[test]
 fn open_note_reverts_for_non_owner() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
 
     env.set_caller(env.get_account(STRANGER));
@@ -155,7 +155,7 @@ fn open_note_reverts_for_non_owner() {
 /// learns nothing about the escrow's terms from the error they get back.
 #[test]
 fn a_stranger_is_refused_as_not_owner_even_when_the_note_is_otherwise_invalid() {
-    let (env, mut contract) = setup();
+    let (env, mut contract) = setup_bonded();
     let seller = env.get_account(SELLER);
 
     env.set_caller(env.get_account(STRANGER));

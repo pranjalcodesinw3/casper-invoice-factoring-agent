@@ -26,6 +26,8 @@ impl DeployScript for ReceivableEscrowDeployScript {
             env,
             ReceivableEscrowInitArgs {
                 min_risk_score: MIN_RISK_SCORE,
+                // 10 CSPR: the underwriter must stake before it may open notes.
+                min_bond: odra::casper_types::U512::from(10_000_000_000u64),
             },
             container,
             350_000_000_000, // gas limit in motes; adjust for the target network

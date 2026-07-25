@@ -7,7 +7,7 @@ An AI agent reads the escrow's terms **from the contract**, buys a signed risk
 score over an x402-style endpoint, and opens a receivable note. Investors fund
 notes with native CSPR, which the escrow forwards to the seller.
 
-**Repository:** [github.com/kamalbuilds/casper-invoice-factoring-agent](https://github.com/kamalbuilds/casper-invoice-factoring-agent)
+**Repository:** [github.com/pranjalcodesinw3/casper-invoice-factoring-agent](https://github.com/pranjalcodesinw3/casper-invoice-factoring-agent)
 
 ---
 
@@ -60,7 +60,7 @@ flowchart TD
 ## Run it in under 5 commands
 
 ```bash
-git clone https://github.com/kamalbuilds/casper-invoice-factoring-agent && cd casper-invoice-factoring-agent
+git clone https://github.com/pranjalcodesinw3/casper-invoice-factoring-agent && cd casper-invoice-factoring-agent
 (cd contract && rustup toolchain install nightly-2026-01-01 --profile minimal && cargo test)
 (cd agent && npm install && npm test)
 ```
@@ -123,6 +123,52 @@ you send. Funding requires a session-wasm deploy of Odra's
 
 ---
 
+## The underwriter bond: designed, tested, NOT deployed
+
+A minimum risk score is a threshold check, and several teams in this
+buildathon have one. It makes the underwriter's score a *filter*; it does not
+make the underwriter *accountable*, because nothing it owns is at risk when the
+score turns out to be wrong.
+
+`contract/src/underwriter_bond.rs` makes the score cost something. The
+underwriter must stake collateral before it may open notes at all
+(`NotBonded`), and when a funded note is declared in default the bond pays the
+investor who funded it, capped at what was actually staked.
+
+**The distinction being claimed is custody, not bonding.** Bonded, slashable
+scoring already exists in this field. Wardens Protocol (46792) has a full
+challenge court with counter-bonds and slashing. But by its own source the bond
+never moves value:
+
+> "bonds are tracked as an internal U512 ledger inside the contract rather than
+> real purse locking" — `wardens_core/src/agents.rs`
+>
+> "The bond is accounted internally (simulated purse — Phase 2 hardening will
+> wire real CSPR purse transfer once Casper account abstraction ships)" —
+> `wardens_phase2/src/bond_vault.rs`
+
+There is no `payable` entrypoint anywhere in that repository, so a slash
+decrements an integer. Here `post_bond` is `#[odra(payable)]` and
+`declare_default` calls `transfer_tokens`, so the contract's balance falls and
+the investor's rises. The mutation table above encodes exactly this: removing
+the transfer and leaving the bookkeeping breaks two tests.
+
+Their stated reason for deferring is also incorrect. Payable Odra entrypoints
+work today through the session-wasm proxy, with `package_hash` passed as a raw
+32-byte `ByteArray` rather than a `Key`. That is not a future capability, it is
+the mechanism [`2233b2d0`](https://testnet.cspr.live/deploy/2233b2d0216adaf8eff0b6dc697e076590f68e6762acce21c210e6d94b528b88)
+already used to move real CSPR to a seller.
+
+**It is not deployed, and this README does not claim it is.** The contract
+carrying it would need a fresh install, and an Odra install prices at roughly
+0.00096 CSPR per wasm byte: `ReceivableEscrow.wasm` is 278,533 bytes, so about
+268 CSPR consumed and ~335 with headroom, before the bond module grows it. The
+signing key holds **9.59 CSPR**, and every key across all five of our projects
+holds ~97 CSPR combined. There is no keyless faucet path. So the module ships
+as source and 14 tests, and the claim stops exactly where the evidence does:
+**designed and tested off chain, never executed on chain.** `judge.yaml`
+credits it with nothing.
+
 ## Honest limits
 
 - **The debtor set is a fixture.** `agent/src/debtors.json` and `invoices.json`
@@ -147,18 +193,19 @@ you send. Funding requires a session-wasm deploy of Odra's
 
 | Suite | Count | Command |
 |---|---:|---|
-| Contract | 25 | `cd contract && cargo test` |
+| Contract | 39 | `cd contract && cargo test` |
 | Agent | 23 | `cd agent && npm test` |
 
 Contract tests live in `contract/src/tests/`, split by the concern each defends:
 `open_note_test.rs` (the underwriting gate), `fund_note_test.rs` (the payable
 path, where real value moves), `lifecycle_test.rs` (the Open -> Funded -> Repaid
-state machine). They assert balances, not just events: an event is what the
-contract *says* happened and a balance is what did.
+state machine), `bond_test.rs` (the underwriter's collateral). They assert
+balances, not just events: an event is what the contract *says* happened and a
+balance is what did.
 
-**Mutation-verified, because a test that cannot fail proves nothing.** Each of
-the five guards a judge can check on chain was disabled in turn, and these are
-the tests that caught it:
+**Mutation-verified, because a test that cannot fail proves nothing.** Each
+guard was disabled in turn and the suite re-run. These are the tests that
+caught it:
 
 | Guard disabled | Tests that fail |
 |---|---:|
@@ -167,9 +214,28 @@ the tests that caught it:
 | `WrongAmount` (attached value must equal face value) | 2 |
 | `AlreadyFunded` (a note funds once) | 3 |
 | `NotFunded` (only a funded note can be repaid) | 3 |
+| bond gate on `open_note` | 3 |
+| only-funded-notes-can-default | 2 |
+| payout cap (stops the bond overdrawing) | 1 |
+| **`slash` stops transferring, becoming ledger-only** | **2** |
 
-All restored; 25 pass. The agent suite was checked the same way: making an
-unknown note-status byte silently map to `"open"` fails a test, restored green.
+All restored; 39 pass, zero warnings, `cargo fmt` clean. The agent suite was
+checked the same way: making an unknown note-status byte silently map to
+`"open"` fails a test.
+
+That last row is the one worth reading twice. Removing the `transfer_tokens`
+call from the slash path, which turns the bond into exactly the internal ledger
+described below, breaks two tests. That is the difference between collateral
+and a counter, expressed as something that can fail.
+
+**One finding this exercise produced, reported against ourselves.** Deleting the
+`AlreadyDefaulted` replay guard broke *no* test, because `declare_default`
+already requires a Funded note and sets it to Defaulted before returning, so a
+second call is refused by `NotDefaultable` first. The guard is unreachable
+today. It is kept as defence in depth for a future caller that reaches `slash`
+by another path, documented as unreachable in the source, and deliberately not
+counted among the proven guards. An unreachable check described as enforcement
+is the kind of claim this project exists to avoid.
 
 CI (`.github/workflows/ci.yml`) runs the agent job, the contract job, and a
 **clean-clone** job that installs from a fresh clone. `contract/Cargo.lock` is
@@ -200,7 +266,7 @@ hackathon team is not one a reader should believe.
 **Where to reach us.** We have no X account and no Discord. Rather than register
 a handle with nothing behind it, the repo is the channel:
 
-- [GitHub Issues](https://github.com/kamalbuilds/casper-invoice-factoring-agent/issues) for bugs, questions and security reports
+- [GitHub Issues](https://github.com/pranjalcodesinw3/casper-invoice-factoring-agent/issues) for bugs, questions and security reports
 - [Live demo](https://casper-invoice-factoring.vercel.app)
 
 ---
