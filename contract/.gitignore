@@ -1,7 +1,9 @@
 .idea
 .vscode
 /target
-Cargo.lock
+# Cargo.lock is tracked on purpose: this crate builds a deployed wasm
+# artifact, so the lock is part of the artifact description. Without it a
+# fresh clone resolves a newer Odra than the tests were written against.
 .backend*
 .builder*
 /wasm
