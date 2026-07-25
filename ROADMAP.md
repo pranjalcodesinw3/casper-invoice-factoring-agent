@@ -7,10 +7,15 @@ on Casper testnet.
 Everything under "Shipped" has a deploy hash or a file path. Everything below it
 does not, and is dated and costed so it can be held to.
 
-**Start here, because it is the weakest thing about this project:** the contract
-is deployed and readable, and it has **no transaction activity at all**. No note
-has been opened or funded on chain. That is item one below, and nothing in this
-document pretends otherwise.
+**Update 2026-07-26:** the gap this file opened with is closed. The contract now
+has a full lifecycle on chain, plus five typed refusals each built so exactly one
+clause can fail. Note opened
+[`e09ad580…`](https://testnet.cspr.live/deploy/e09ad580159e2a6c66bb09e408c2153b1eed3c2cfc023b298fe45ef623022051), funded and
+forwarded to the seller
+[`2233b2d0…`](https://testnet.cspr.live/deploy/2233b2d0216adaf8eff0b6dc697e076590f68e6762acce21c210e6d94b528b88), and an
+under-minimum risk score refused
+[`ffd87d19…`](https://testnet.cspr.live/deploy/ffd87d1929d92da2c71e0f891fbd1d092cf13bb3a16221e2a65b02e06883ddd9) with `RiskTooHigh`.
+Full record in [PROOF.json](PROOF.json). The Q3 items below are updated to match.
 
 ---
 
@@ -44,16 +49,16 @@ work at all.
 
 ## Q3 2026 (Aug-Sep): get it on chain, then make the risk real
 
-**Aug 2026 — open and fund one note on chain.**
-The whole project's credibility gap in one line. Needs a funded seller account,
-one `open_note` and one `fund_note`, and the resulting explorer links in the
-README. Cost: gas plus the funding amount, under 50 CSPR for a demonstration
-note. Until this lands, every claim about the flow is a claim about tests.
-
-**Aug 2026 — trigger `RiskTooHigh` and `NoteExists` on chain.**
-Both refusals are covered by tests and neither has been exercised live. Two
-deliberately bad `open_note` calls produce two linked reverts, which is worth
-more to a reader than either test.
+**DONE 2026-07-26 — the lifecycle and the refusals are both on chain.**
+Open, fund and repay all execute, and five refusals (`RiskTooHigh`, `NoteExists`,
+`NoNote`, `WrongAmount`, `NotFunded`) each have their own deploy hash. Two
+things this cost that are invisible until you hit them: a payable Odra entrypoint
+cannot be called directly, because Odra runs a session wasm in the caller's
+account context and that is the only place a cargo purse can be funded, so a
+direct call sees `attached_value == 0` and reverts as an underpayment; and
+`package_hash` must be a raw 32-byte ByteArray, since a Key-wrapped value fails
+the argument deserializer before any contract logic runs, which is not
+enforcement and must never be counted as a rejection.
 
 **Sep 2026 — replace the fixture debtor set.**
 `agent/src/debtors.json` is sample data. Until a risk score comes from something

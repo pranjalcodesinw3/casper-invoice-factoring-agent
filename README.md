@@ -180,7 +180,7 @@ deliberately small so that it stays credible: security reports triaged within 72
 hours, and the deployed contract left in place. A larger promise from a
 hackathon team is not one a reader should believe.
 
-**What ships next**, in order: open and fund one note on chain, because the contract currently has no transaction activity at all and that is the project's credibility gap, then trigger `RiskTooHigh` and `NoteExists` live, then model the repayment and default path which is most of what factoring actually is.
+**What ships next**, in order: replace the fixture debtor set, because until a risk score comes from outside this repo the underwriting is a demo of a mechanism rather than a credit decision, then model the repayment and default path which is most of what factoring actually is.
 
 **Where to reach us.** We have no X account and no Discord. Rather than register
 a handle with nothing behind it, the repo is the channel:
