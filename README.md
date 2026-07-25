@@ -131,6 +131,31 @@ testnet was up.
 
 ---
 
+## After the hackathon
+
+The full plan, with dates and costs, is in [ROADMAP.md](ROADMAP.md), including
+who this is for and who it is explicitly not for. The short version:
+
+**The testnet contract stays up.** `ReceivableEscrow` stays deployed at `1c7b0dfe…` and every deploy hash in this
+README will keep resolving for as long as the network keeps testnet history. A
+v2 gets a new package hash, listed in ROADMAP.md alongside the old one and
+marked superseded rather than deleted.
+
+**Who runs it.** The authors in `git log`. Through 2026 the commitment is
+deliberately small so that it stays credible: security reports triaged within 72
+hours, and the deployed contract left in place. A larger promise from a
+hackathon team is not one a reader should believe.
+
+**What ships next**, in order: open and fund one note on chain, because the contract currently has no transaction activity at all and that is the project's credibility gap, then trigger `RiskTooHigh` and `NoteExists` live, then model the repayment and default path which is most of what factoring actually is.
+
+**Where to reach us.** We have no X account and no Discord. Rather than register
+a handle with nothing behind it, the repo is the channel:
+
+- [GitHub Issues](https://github.com/kamalbuilds/casper-invoice-factoring-agent/issues) for bugs, questions and security reports
+- [Live demo](https://casper-invoice-factoring.vercel.app)
+
+---
+
 ## License
 
 MIT
