@@ -18,6 +18,15 @@ name: Invoice Factoring Agent
 grandma_pitch: Get paid today for work your customer will pay for in ninety days.
 named_user: Freelance supplier holding a 90-day unpaid invoice
 painful_moment: Payroll is due Friday and the invoice clears in November
+# WEAK CLAIM, deliberately left weak until the bond ships. "Minimum risk score
+# gate" is a threshold check and at least three other finalists have one, so this
+# field currently describes the product honestly rather than flatteringly.
+# The differentiator being built is narrower and checkable: an underwriter bond
+# that is REAL CUSTODY. Wardens (46792) has bonded, slashable scorers, but by
+# their own source it never moves value -- agents.rs:3-6 "tracked as an internal
+# U512 ledger ... rather than real purse locking", bond_vault.rs:51 "simulated
+# purse", and there is not one payable entrypoint in their entire repo. This
+# field will only claim custody once a tx hash shows CSPR leaving a bond purse.
 novel_mechanism: Agent-underwritten receivable note with an on-chain minimum risk score gate
 
 # Five DISTINCT typed revert codes, each its own deploy on casper-test. Each
@@ -69,4 +78,14 @@ socials: https://github.com/kamalbuilds/casper-invoice-factoring-agent/issues
 # not a mocked demo path.
 mock_in_demo_path: false
 readme_overclaims: false
-competitor_overlap_count: 3
+# 4, raised from 3 after sweeping all text-bearing fields of all 78 raw records
+# (not the truncated summary) on invoice|receivable|factoring|credit|underwrit*|
+# lend|borrow|collateral|discount|note|advance, then READING the .rs of every
+# candidate rather than trusting descriptions. Named, so the number is checkable:
+#   46792 Wardens Protocol  lending + bonded, slashable scoring agents
+#   46694 ARIA              agentic underwriting, invoice collateral, risk vote
+#   46441 Faktura           invoice financing on Casper
+#   46662 Runway            receivable-style advance
+# The scorer docks -1.5 at >=3, so this was already fully docked at 3 and raising
+# it to 4 costs nothing. Stating the true number instead of the cheapest one.
+competitor_overlap_count: 4

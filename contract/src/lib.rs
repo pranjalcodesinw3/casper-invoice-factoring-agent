@@ -3,3 +3,6 @@
 extern crate alloc;
 
 pub mod receivable_escrow;
+
+#[cfg(test)]
+mod tests;

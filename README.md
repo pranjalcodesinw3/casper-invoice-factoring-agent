@@ -147,14 +147,29 @@ you send. Funding requires a session-wasm deploy of Odra's
 
 | Suite | Count | Command |
 |---|---:|---|
-| Contract | 12 | `cd contract && cargo test` |
-| Agent | 11 | `cd agent && npm test` |
+| Contract | 25 | `cd contract && cargo test` |
+| Agent | 23 | `cd agent && npm test` |
 
-The agent suite was mutation-checked: disabling the minimum-risk re-check in
-`underwriting-tools.ts` fails two tests, and it was restored green. Other tests
-cover the decimal-string to motes conversion at amounts where a float would
-round, and the account-hash encoding bug where `toJSON()` emits an unhyphenated
-form that `Key.newKey` rejects.
+Contract tests live in `contract/src/tests/`, split by the concern each defends:
+`open_note_test.rs` (the underwriting gate), `fund_note_test.rs` (the payable
+path, where real value moves), `lifecycle_test.rs` (the Open -> Funded -> Repaid
+state machine). They assert balances, not just events: an event is what the
+contract *says* happened and a balance is what did.
+
+**Mutation-verified, because a test that cannot fail proves nothing.** Each of
+the five guards a judge can check on chain was disabled in turn, and these are
+the tests that caught it:
+
+| Guard disabled | Tests that fail |
+|---|---:|
+| `RiskTooHigh` (risk below the on-chain minimum) | 2 |
+| `NoteExists` (duplicate note id) | 2 |
+| `WrongAmount` (attached value must equal face value) | 2 |
+| `AlreadyFunded` (a note funds once) | 3 |
+| `NotFunded` (only a funded note can be repaid) | 3 |
+
+All restored; 25 pass. The agent suite was checked the same way: making an
+unknown note-status byte silently map to `"open"` fails a test, restored green.
 
 CI (`.github/workflows/ci.yml`) runs the agent job, the contract job, and a
 **clean-clone** job that installs from a fresh clone. `contract/Cargo.lock` is
