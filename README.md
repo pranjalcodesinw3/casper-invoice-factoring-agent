@@ -194,7 +194,7 @@ credits it with nothing.
 | Suite | Count | Command |
 |---|---:|---|
 | Contract | 39 | `cd contract && cargo test` |
-| Agent | 23 | `cd agent && npm test` |
+| Agent | 41 | `cd agent && npm test` |
 
 Contract tests live in `contract/src/tests/`, split by the concern each defends:
 `open_note_test.rs` (the underwriting gate), `fund_note_test.rs` (the payable
