@@ -64,21 +64,33 @@ export function buildUnderwritingTools(deps: {
       "this before proposing anything. You do not know these values otherwise.",
     parameters: { type: "object", properties: {}, required: [] },
     async execute() {
-      const [owner, minRiskScore, blockTimeMs, escrowBalanceMotes] =
+      const [owner, minRiskScore, blockTimeMs, escrowBalanceMotes, minBondMotes] =
         await Promise.all([
           reader.getOwner(),
           reader.getMinRiskScore(),
           reader.getBlockTime(),
           reader.getEscrowBalanceMotes(),
+          reader.getMinBondMotes(),
         ]);
+      // The bond is a precondition of underwriting, not a badge beside it:
+      // open_note checks is_bonded BEFORE it looks at the risk score, so an
+      // unbonded owner is refused NotBonded no matter how good the paper is.
+      const bond = await reader.getBond(owner);
+      const bonded = bond !== null && BigInt(bond.amountMotes) >= BigInt(minBondMotes);
       return {
         owner,
         minRiskScore,
         blockTimeMs,
         escrowBalanceMotes,
+        minBondMotes,
+        underwriterBondMotes: bond?.amountMotes ?? "0",
+        underwriterDefaults: bond?.defaults ?? 0,
+        underwriterIsBonded: bonded,
         note:
           "minRiskScore is enforced on-chain: open_note reverts RiskTooHigh " +
-          "for any score below it.",
+          "for any score below it. open_note also reverts NotBonded when " +
+          "underwriterIsBonded is false, and that clause is checked first, so " +
+          "an unbonded underwriter cannot open a note at any risk score.",
       };
     },
   };
@@ -267,9 +279,23 @@ export function buildUnderwritingTools(deps: {
         };
       }
 
-      // Local pre-check against the same clause the contract enforces. This
-      // does not replace the on-chain check; it makes the failure legible
-      // before it costs gas.
+      // Local pre-check against the same clauses the contract enforces, in the
+      // same order. This does not replace the on-chain check; it makes the
+      // failure legible before it costs gas, and on Casper 2.x a revert still
+      // burns the whole gas limit, so a cheap refusal here is real money.
+      //
+      // NotBonded is checked first because open_note checks it first.
+      const owner = await reader.getOwner();
+      if (!(await reader.isBonded(owner))) {
+        const minBond = await reader.getMinBondMotes();
+        return {
+          prepared: false,
+          refusedBy: "NotBonded",
+          error:
+            `the underwriter ${owner} has not staked the ${minBond} mote minimum bond; ` +
+            `open_note would revert NotBonded before it looked at the risk score`,
+        };
+      }
       const minRiskScore = await reader.getMinRiskScore();
       if (args.riskScore < minRiskScore) {
         return {

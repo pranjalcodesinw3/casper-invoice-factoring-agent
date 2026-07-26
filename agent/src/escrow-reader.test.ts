@@ -34,18 +34,21 @@ test("the field indices match the contract's declaration order", () => {
   assert.equal(RECEIVABLE_ESCROW_FIELDS.notes, 3);
 });
 
-test("the status map covers exactly the three states the contract writes", () => {
-  assert.deepEqual(Object.keys(NOTE_STATUS).sort(), ["0", "1", "2"]);
+test("the status map covers exactly the four states the contract writes", () => {
+  assert.deepEqual(Object.keys(NOTE_STATUS).sort(), ["0", "1", "2", "3"]);
   assert.equal(NOTE_STATUS[0], "open");
   assert.equal(NOTE_STATUS[1], "funded");
   assert.equal(NOTE_STATUS[2], "repaid");
-  // A fourth state added on chain must not silently map to undefined and be
-  // rendered as a blank badge; the reader throws instead, which is asserted
-  // in the decode tests below.
+  // Status 3 is written by declare_default, which the v2 install added. The
+  // map used to stop at 2 and this test asserted 3 was impossible, so a
+  // slashed note decoded to undefined and threw as a layout change. That was
+  // an accurate assertion about the OLD contract and a false one about the
+  // deployed one.
+  assert.equal(NOTE_STATUS[3], "defaulted");
   assert.equal(
-    (NOTE_STATUS as Record<number, string>)[3],
+    (NOTE_STATUS as Record<number, string>)[4],
     undefined,
-    "status 3 is not a state this contract has"
+    "status 4 is not a state this contract has"
   );
 });
 

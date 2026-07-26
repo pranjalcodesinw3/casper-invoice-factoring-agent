@@ -7,6 +7,14 @@
  *     owner: Var<Address>          -> 1
  *     min_risk_score: Var<u64>     -> 2
  *     notes: Mapping<u64, Note>    -> 3
+ *     bond: SubModule<UnderwriterBond> -> 4
+ *
+ * A SubModule's own fields nest: Odra packs the path as one nibble per level,
+ * so `bond.bonds` (child 1 of parent 4) is index `(4 << 4) | 1 = 0x41`, not 5.
+ * Read off the live v2 contract: index 0x43 (`bond.min_bond`, child 3) decodes
+ * to 10_000_000_000 motes, the 10 CSPR minimum the contract was installed
+ * with, and indices 1-3 still decode to owner/min_risk_score/notes. That is
+ * the evidence the nibble packing is right rather than a guess.
  *
  * Verified against the live testnet contract
  * (package hash-1c7b0dfe..., contract 98424363...): field 1 decodes to
@@ -22,13 +30,43 @@ export const RECEIVABLE_ESCROW_FIELDS = {
   owner: 1,
   minRiskScore: 2,
   notes: 3,
+  /** SubModule<UnderwriterBond>, declared fourth. */
+  bond: 4,
 } as const;
+
+/**
+ * Field indices inside the `UnderwriterBond` submodule, in its own declaration
+ * order. Nested under `RECEIVABLE_ESCROW_FIELDS.bond` via `nested()`.
+ */
+export const UNDERWRITER_BOND_FIELDS = {
+  bonds: 1,
+  defaulted: 2,
+  minBond: 3,
+} as const;
+
+/**
+ * Odra's index for a field one level inside a SubModule.
+ *
+ * The path is packed a nibble per level, most significant level first, so the
+ * scheme holds while every index is <= 15. Both levels are checked rather than
+ * assumed, because a silent overflow here would read a different dictionary
+ * key and return a confident wrong answer.
+ */
+export function nested(parentIndex: number, childIndex: number): number {
+  if (parentIndex < 1 || parentIndex > 15 || childIndex < 1 || childIndex > 15) {
+    throw new Error(
+      `Odra nibble packing only holds for indices 1-15; got ${parentIndex}.${childIndex}`
+    );
+  }
+  return (parentIndex << 4) | childIndex;
+}
 
 /** Lifecycle values of `Note.status` as the contract writes them. */
 export const NOTE_STATUS = {
   0: "open",
   1: "funded",
   2: "repaid",
+  3: "defaulted",
 } as const;
 
 export type NoteStatus = (typeof NOTE_STATUS)[keyof typeof NOTE_STATUS];
@@ -42,6 +80,16 @@ export interface OnChainNote {
   riskScore: number;
   riskDataHash: string;
   status: NoteStatus;
+}
+
+/** The underwriter's staked collateral, as `UnderwriterBond::Bond`. */
+export interface OnChainBond {
+  /** Motes currently held for this underwriter. */
+  amountMotes: string;
+  /** Cumulative motes slashed to investors on declared defaults. */
+  slashedMotes: string;
+  /** Number of notes this underwriter has had declared in default. */
+  defaults: number;
 }
 
 function readNote(noteId: bigint): (r: CLReader) => OnChainNote {
@@ -139,5 +187,58 @@ export class ReceivableEscrowReader {
   /** Native tokens escrowed in the contract, when the module holds a purse. */
   async getEscrowBalanceMotes(): Promise<string | null> {
     return this.state.contractBalanceMotes();
+  }
+
+  /**
+   * The minimum bond an underwriter must hold before `open_note` will accept
+   * anything from it. Read from the contract, never assumed: the unit tests
+   * use a symbolic 10_000 motes that would be meaningless against the live
+   * install, which was initialized at 10 CSPR.
+   */
+  async getMinBondMotes(): Promise<string> {
+    const value = await this.state.readField(
+      nested(RECEIVABLE_ESCROW_FIELDS.bond, UNDERWRITER_BOND_FIELDS.minBond),
+      undefined,
+      "min bond",
+      (r) => r.u512()
+    );
+    if (value === null) {
+      throw new Error(
+        "ReceivableEscrow has no min_bond set; the deployed contract predates underwriter bond custody"
+      );
+    }
+    return value.toString();
+  }
+
+  /**
+   * The collateral one underwriter has staked, or null when it has never
+   * posted a bond. Null is a real answer here ("no stake"), so callers must
+   * not confuse it with a read failure; every other error throws.
+   */
+  async getBond(underwriter: string): Promise<OnChainBond | null> {
+    return this.state.readField(
+      nested(RECEIVABLE_ESCROW_FIELDS.bond, UNDERWRITER_BOND_FIELDS.bonds),
+      accountKeyBytes(underwriter),
+      `bond for ${underwriter}`,
+      (r) => ({
+        amountMotes: r.u512().toString(),
+        slashedMotes: r.u512().toString(),
+        defaults: r.u32le(),
+      })
+    );
+  }
+
+  /**
+   * Whether `underwriter` clears the bond bar, mirroring the contract's own
+   * `is_bonded`. This is the clause `open_note` checks first, so an unbonded
+   * underwriter is refused before the risk score is even considered.
+   */
+  async isBonded(underwriter: string): Promise<boolean> {
+    const [bond, minBond] = await Promise.all([
+      this.getBond(underwriter),
+      this.getMinBondMotes(),
+    ]);
+    if (!bond) return false;
+    return BigInt(bond.amountMotes) >= BigInt(minBond);
   }
 }

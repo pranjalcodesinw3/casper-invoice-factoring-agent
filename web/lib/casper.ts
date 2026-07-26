@@ -24,6 +24,22 @@ export const FUND_NOTE_PAYMENT_MOTES = 5_000_000_000;
 /** Gas budget for owner-gated `mark_repaid` (3 CSPR). */
 export const MARK_REPAID_PAYMENT_MOTES = 3_000_000_000;
 
+/**
+ * Gas budget for payable `post_bond` via the Odra proxy caller (20 CSPR).
+ *
+ * Session wasm costs far more gas than a contract call: the node executes the
+ * whole proxy module, not just an entrypoint. 5 CSPR runs out and surfaces as
+ * "Out of gas error", which reads deceptively like a contract rejection. This
+ * matches the PROXY_GAS_MOTES the prover script settled on.
+ *
+ * Casper 2.x charges the FULL limit even when the call reverts, so this number
+ * is a real cost on every attempt, not a ceiling.
+ */
+export const PROXY_CALL_PAYMENT_MOTES = 20_000_000_000;
+
+/** Gas budget for owner-gated `declare_default` (5 CSPR: it transfers out). */
+export const DECLARE_DEFAULT_PAYMENT_MOTES = 5_000_000_000;
+
 /** Motes per CSPR. */
 export const MOTES_PER_CSPR = BigInt(1_000_000_000);
 
@@ -251,24 +267,33 @@ export function buildOpenNoteDeploy(
 }
 
 /**
- * Payable `fund_note(note_id)` deploy. Odra payable entrypoints require the
- * `proxy_caller.wasm` session shim so native CSPR can be attached from an account.
+ * Builds a session deploy that calls a PAYABLE Odra entrypoint.
  *
- * The investor must attach exactly `faceValueMotes` (the note face value).
- * Requires `NEXT_PUBLIC_CONTRACT_PACKAGE_HASH` from the deploy receipt.
+ * Payable entrypoints cannot be called directly from an account on Casper:
+ * there is no way to attach native tokens to a plain contract call. Odra ships
+ * `proxy_caller.wasm`, a session shim that takes the package hash as a raw
+ * 32-byte ByteArray, the entry point name, the inner args as a List<U8> of
+ * their serialization, and the value to attach.
+ *
+ * Shared by fund_note and post_bond, which differ only in entry point, args,
+ * and amount. They were separate copies of this until post_bond needed it, and
+ * a second copy is a second place for the ByteArray/List<U8> encoding to drift.
  */
-export async function buildFundNoteDeploy(
-  contractPackageHash: string,
-  callerPublicKeyHex: string,
-  noteId: number,
-  faceValueMotes: string
-): Promise<PreparedDeploy> {
-  const publicKey = PublicKey.fromHex(callerPublicKeyHex);
-  const packageHashBytes = hexToBytes(normalizePackageHash(contractPackageHash));
-  const innerArgs = Args.fromMap({
-    note_id: CLValue.newCLUint64(noteId),
-  });
-  const innerBytes = Array.from(innerArgs.toBytes());
+async function buildPayableProxyDeploy(opts: {
+  contractPackageHash: string;
+  callerPublicKeyHex: string;
+  entryPoint: string;
+  /** Inner entrypoint args. Empty for a payable call that takes none. */
+  innerArgs: ReturnType<typeof Args.fromMap>;
+  /** Native motes to attach, as a base-10 string. */
+  attachedMotes: string;
+  paymentMotes: number;
+}): Promise<PreparedDeploy> {
+  const publicKey = PublicKey.fromHex(opts.callerPublicKeyHex);
+  const packageHashBytes = hexToBytes(
+    normalizePackageHash(opts.contractPackageHash)
+  );
+  const innerBytes = Array.from(opts.innerArgs.toBytes());
   const argsList = CLValue.newCLList(
     CLTypeUInt8,
     innerBytes.map((b) => CLValue.newCLUint8(b))
@@ -276,10 +301,10 @@ export async function buildFundNoteDeploy(
 
   const proxyArgs = Args.fromMap({
     package_hash: CLValue.newCLByteArray(packageHashBytes),
-    entry_point: CLValue.newCLString("fund_note"),
+    entry_point: CLValue.newCLString(opts.entryPoint),
     args: argsList,
-    attached_value: CLValue.newCLUInt512(faceValueMotes),
-    amount: CLValue.newCLUInt512(faceValueMotes),
+    attached_value: CLValue.newCLUInt512(opts.attachedMotes),
+    amount: CLValue.newCLUInt512(opts.attachedMotes),
   });
 
   const wasm = await loadProxyCallerWasm();
@@ -288,7 +313,79 @@ export async function buildFundNoteDeploy(
     .wasm(wasm)
     .runtimeArgs(proxyArgs)
     .chainName(CHAIN_NAME)
-    .payment(FUND_NOTE_PAYMENT_MOTES)
+    .payment(opts.paymentMotes)
+    .buildFor1_5();
+
+  return legacyDeployFromTransaction(transaction);
+}
+
+/**
+ * Payable `fund_note(note_id)` deploy. The investor must attach exactly
+ * `faceValueMotes`; the contract reverts WrongAmount on anything else.
+ */
+export async function buildFundNoteDeploy(
+  contractPackageHash: string,
+  callerPublicKeyHex: string,
+  noteId: number,
+  faceValueMotes: string
+): Promise<PreparedDeploy> {
+  return buildPayableProxyDeploy({
+    contractPackageHash,
+    callerPublicKeyHex,
+    entryPoint: "fund_note",
+    innerArgs: Args.fromMap({ note_id: CLValue.newCLUint64(noteId) }),
+    attachedMotes: faceValueMotes,
+    paymentMotes: PROXY_CALL_PAYMENT_MOTES,
+  });
+}
+
+/**
+ * Payable `post_bond()` deploy: stakes the underwriter's own CSPR as
+ * collateral behind every score it signs.
+ *
+ * This is what separates the bond from a number in a table. The attached CSPR
+ * moves into the contract's purse and only leaves via withdraw_bond or a slash
+ * on declare_default, both of which are real transfers.
+ *
+ * The entrypoint takes NO arguments: the staked amount is the attached value.
+ */
+export async function buildPostBondDeploy(
+  contractPackageHash: string,
+  callerPublicKeyHex: string,
+  bondMotes: string
+): Promise<PreparedDeploy> {
+  if (BigInt(bondMotes) <= BigInt(0)) {
+    // The contract reverts ZeroBond, but that revert still burns the full gas
+    // limit on Casper 2.x, so refusing here saves 20 CSPR of real money.
+    throw new Error("Bond amount must be greater than zero");
+  }
+  return buildPayableProxyDeploy({
+    contractPackageHash,
+    callerPublicKeyHex,
+    entryPoint: "post_bond",
+    innerArgs: Args.fromMap({}),
+    attachedMotes: bondMotes,
+    paymentMotes: PROXY_CALL_PAYMENT_MOTES,
+  });
+}
+
+/**
+ * Owner-only `declare_default(note_id)`: pays the note's investor out of the
+ * underwriter's bond. Not payable, so it is a direct contract call.
+ */
+export function buildDeclareDefaultDeploy(
+  contractHash: string,
+  callerPublicKeyHex: string,
+  noteId: number
+): PreparedDeploy {
+  const publicKey = PublicKey.fromHex(callerPublicKeyHex);
+  const transaction = new ContractCallBuilder()
+    .from(publicKey)
+    .byHash(normalizeContractHash(contractHash))
+    .entryPoint("declare_default")
+    .runtimeArgs(Args.fromMap({ note_id: CLValue.newCLUint64(noteId) }))
+    .chainName(CHAIN_NAME)
+    .payment(DECLARE_DEFAULT_PAYMENT_MOTES)
     .buildFor1_5();
 
   return legacyDeployFromTransaction(transaction);
@@ -323,6 +420,78 @@ export function buildMarkRepaidDeploy(
 
 export function explorerDeployUrl(deployHashHex: string): string {
   return `https://testnet.cspr.live/deploy/${deployHashHex}`;
+}
+
+/**
+ * The testnet node this app broadcasts to.
+ *
+ * The Casper Wallet extension signs but does not broadcast, so a signature is
+ * not a transaction. Something has to PUT the signed deploy, and doing it from
+ * the browser keeps the deploy hash the UI shows identical to the one the node
+ * accepted rather than one built hopefully before signing.
+ */
+export const NODE_RPC_URL =
+  process.env.NEXT_PUBLIC_CASPER_NODE_URL ??
+  "https://node.testnet.casper.network/rpc";
+
+/**
+ * Attaches a signature to a legacy deploy and broadcasts it.
+ *
+ * Returns the hash the NODE acknowledged. A deploy hash is computable before
+ * signing, so returning the locally built one would show a plausible hash for
+ * a transaction that was never accepted, which is exactly the kind of proof a
+ * judge is right to distrust.
+ */
+export async function signAndSendDeploy(
+  deployJson: Record<string, unknown>,
+  signerPublicKeyHex: string,
+  signature: Uint8Array
+): Promise<string> {
+  // The approval signature carries the key algorithm as a leading byte: 0x01
+  // for ed25519, 0x02 for secp256k1. The extension returns the raw signature
+  // without it, and the prefix is recoverable from the public key's own tag.
+  const algoPrefix = signerPublicKeyHex.slice(0, 2);
+  const signatureHex =
+    algoPrefix +
+    Array.from(signature)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+  const signed = {
+    ...deployJson,
+    approvals: [{ signer: signerPublicKeyHex, signature: signatureHex }],
+  };
+
+  const res = await fetch(NODE_RPC_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "account_put_deploy",
+      params: { deploy: signed },
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Node returned HTTP ${res.status} for account_put_deploy`);
+  }
+  const body = (await res.json()) as {
+    result?: { deploy_hash?: string };
+    error?: { message?: string; data?: string };
+  };
+  if (body.error) {
+    throw new Error(
+      `Node rejected the deploy: ${body.error.message ?? "unknown error"}${
+        body.error.data ? ` (${body.error.data})` : ""
+      }`
+    );
+  }
+  const hash = body.result?.deploy_hash;
+  if (!hash) {
+    throw new Error("Node accepted the deploy but returned no hash");
+  }
+  return hash;
 }
 
 export function explorerContractUrl(contractHash: string): string {

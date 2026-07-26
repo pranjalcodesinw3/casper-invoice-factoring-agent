@@ -157,7 +157,19 @@ export async function runAgentLoop(
       break;
     }
 
-    messages.push(message);
+    // Echo back ONLY the fields the tool protocol is defined over.
+    //
+    // Gateways that front a reasoning model add vendor fields to the assistant
+    // message (`reasoning_content` and friends). Replaying those verbatim made
+    // one gateway drop the `tool_calls` linkage on the next turn, so the model
+    // never saw its own tool results and re-issued the same three calls every
+    // step until the loop exhausted with an empty answer. Observed here: eight
+    // steps, fourteen tool calls, two identical open_note proposals, no memo.
+    messages.push({
+      role: "assistant",
+      content: message.content ?? null,
+      ...(message.tool_calls?.length ? { tool_calls: message.tool_calls } : {}),
+    } as ChatCompletionMessageParam);
 
     if (message.content) {
       push({ step, kind: "thought", text: message.content });
@@ -231,15 +243,53 @@ export async function runAgentLoop(
     }
   }
 
+  // Exhaustion is a real outcome, but returning an empty finalText makes it
+  // indistinguishable from "the agent had nothing to say", and a UI that binds
+  // to finalText then renders a blank memo after a run that really did read
+  // the contract. Ask once, with tools withdrawn, so the model has to write
+  // the memo from what it already observed instead of calling another tool.
   push({
     step: maxSteps,
     kind: "error",
     text: `loop exhausted after ${maxSteps} steps without a final answer`,
   });
 
+  let finalText = "";
+  try {
+    const closing = await client.chat.completions.create({
+      model,
+      messages: [
+        ...messages,
+        {
+          role: "user",
+          content:
+            "You have run out of tool budget. Do not request another tool. " +
+            "Write the underwriting memo now from the tool results above: " +
+            "state the decision, the risk score, the contract minimum you " +
+            "compared it against, and the note id if one was proposed.",
+        },
+      ],
+      temperature: 0.1,
+      max_tokens: maxTokens,
+      stream: false,
+    });
+    finalText = closing.choices[0]?.message?.content ?? "";
+    if (finalText) push({ step: maxSteps, kind: "final", text: finalText });
+  } catch (err) {
+    // A failed close-out must not lose the trace: the run's evidence is the
+    // trace, and the caller can still see every tool result.
+    push({
+      step: maxSteps,
+      kind: "error",
+      text: `could not obtain a closing memo: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    });
+  }
+
   return {
     runId,
-    finalText: "",
+    finalText,
     trace,
     steps: maxSteps,
     exhausted: true,

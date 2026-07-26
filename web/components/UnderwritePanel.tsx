@@ -1,19 +1,36 @@
 "use client";
 
+/* The working surface: run the agent, then sign what it proposed.
+ *
+ * This panel used to render a `decision` object the server stopped returning
+ * when the acceptance bar moved on-chain, and posted a `minRiskScore` the
+ * server now rejects outright. Every click produced HTTP 400 and the panel
+ * showed the string "Invalid request", which is the worst possible failure for
+ * a demo: it looks like the agent refused the invoice rather than like the
+ * frontend called an endpoint that no longer exists.
+ *
+ * What the server returns is an agent RUN. The evidence is the trace: which
+ * contract terms it read, which signed report it bought, and whether it chose
+ * to propose a note. So the trace is what this renders, and the deploy the
+ * agent built is what the owner signs. Nothing here re-derives a decision.
+ */
+
 import { useMemo, useState } from "react";
 import {
+  lastToolResult,
   runUnderwriting,
   SCENARIOS,
   Scenario,
-  UnderwritingResult,
+  UnderwriteRunResponse,
+  type EscrowTermsResult,
+  type ProposalResult,
+  type RiskReportResult,
 } from "@/lib/agent-client";
 import {
-  buildOpenNoteDeploy,
   DEMO_USD_PER_CSPR,
   explorerDeployUrl,
   isOwnerPublicKey,
-  mapNoteArgsToContract,
-  noteIdFromString,
+  motesToCspr,
   truncateHex,
   usdToFundingCspr,
 } from "@/lib/casper";
@@ -38,7 +55,7 @@ export interface OpenedNote {
 }
 
 interface UnderwritePanelProps {
-  onEvaluated?: (result: UnderwritingResult) => void;
+  onEvaluated?: (result: UnderwriteRunResponse) => void;
   onNoteOpened?: (note: OpenedNote) => void;
 }
 
@@ -49,17 +66,28 @@ type DeployStatus =
   | { state: "error"; message: string }
   | { state: "cancelled" };
 
-const CONTRACT_HASH = process.env.NEXT_PUBLIC_CONTRACT_HASH;
 const OWNER_PUBLIC_KEY = process.env.NEXT_PUBLIC_OWNER_PUBLIC_KEY;
+
+/** The note id the agent proposed, read back out of its own tool call. */
+function proposedNoteId(run: UnderwriteRunResponse): number | null {
+  for (let i = run.trace.length - 1; i >= 0; i -= 1) {
+    const entry = run.trace[i];
+    if (entry.kind === "tool_call" && entry.tool === "propose_open_note") {
+      const args = entry.args as { noteId?: string } | undefined;
+      const parsed = Number(args?.noteId);
+      return Number.isInteger(parsed) ? parsed : null;
+    }
+  }
+  return null;
+}
 
 export default function UnderwritePanel({ onEvaluated, onNoteOpened }: UnderwritePanelProps) {
   const wallet = useWallet();
   const [scenarioKey, setScenarioKey] = useState<Scenario["key"]>("good");
-  const [minRiskScore, setMinRiskScore] = useState("50");
   const [sellerAddress, setSellerAddress] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<UnderwritingResult | null>(null);
+  const [run, setRun] = useState<UnderwriteRunResponse | null>(null);
   const [deploy, setDeploy] = useState<DeployStatus>({ state: "idle" });
 
   const scenario = useMemo(
@@ -69,25 +97,36 @@ export default function UnderwritePanel({ onEvaluated, onNoteOpened }: Underwrit
 
   const isOwner = isOwnerPublicKey(wallet.publicKeyHex, OWNER_PUBLIC_KEY);
 
-  const runEvaluation = async () => {
-    const min = Number.parseInt(minRiskScore, 10);
-    if (Number.isNaN(min) || min < 0 || min > 100) {
-      setError("Minimum risk score must be an integer between 0 and 100.");
+  const report = run ? lastToolResult<RiskReportResult>(run.trace, "get_risk_report") : null;
+  const terms = run ? lastToolResult<EscrowTermsResult>(run.trace, "get_escrow_terms") : null;
+  const proposal = run
+    ? lastToolResult<ProposalResult>(run.trace, "propose_open_note")
+    : null;
+
+  const runUnderwritingFlow = async () => {
+    const seller = sellerAddress.trim() || wallet.publicKeyHex;
+    if (!seller) {
+      setError("Connect a wallet or enter the seller's Casper public key.");
+      return;
+    }
+    if (!wallet.publicKeyHex) {
+      setError("Connect the escrow owner wallet: open_note reverts NotOwner for anyone else.");
       return;
     }
 
     setLoading(true);
     setError(null);
-    setResult(null);
+    setRun(null);
     setDeploy({ state: "idle" });
 
     try {
       const outcome = await runUnderwriting({
         invoice: scenario.invoice,
         debtorId: scenario.debtorId,
-        minRiskScore: min,
+        sellerPublicKeyHex: seller,
+        callerPublicKeyHex: wallet.publicKeyHex,
       });
-      setResult(outcome);
+      setRun(outcome);
       onEvaluated?.(outcome);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -98,13 +137,8 @@ export default function UnderwritePanel({ onEvaluated, onNoteOpened }: Underwrit
     }
   };
 
-  const openNoteOnChain = async () => {
-    if (!result || !result.noteArgs) return;
-
-    if (!CONTRACT_HASH) {
-      setDeploy({ state: "error", message: "NEXT_PUBLIC_CONTRACT_HASH is not configured." });
-      return;
-    }
+  const signProposedNote = async () => {
+    if (!run?.deploy) return;
     if (!wallet.publicKeyHex) {
       setDeploy({ state: "error", message: "Connect the owner wallet before opening a note." });
       return;
@@ -116,67 +150,53 @@ export default function UnderwritePanel({ onEvaluated, onNoteOpened }: Underwrit
       });
       return;
     }
-    const seller = sellerAddress.trim();
-    if (!seller) {
-      setDeploy({
-        state: "error",
-        message: "Enter the seller's Casper public key (or account-hash) to receive funding.",
-      });
+
+    const noteId = proposedNoteId(run);
+    if (noteId === null) {
+      setDeploy({ state: "error", message: "The agent did not propose a note id." });
       return;
     }
 
     setDeploy({ state: "pending" });
     try {
-      // Map the agent's noteArgs onto the contract types: u64 note_id derived from the
-      // note id string, Address seller from the supplied public key, and the recommended
-      // advance amount as the on-chain face value in motes.
-      const contractArgs = mapNoteArgsToContract(
-        result.noteArgs,
-        seller,
-        result.decision.fundingAmount
-      );
-
-      const { deployJson, deployHashHex } = buildOpenNoteDeploy(
-        CONTRACT_HASH,
-        wallet.publicKeyHex,
-        contractArgs
-      );
-
-      const outcome = await wallet.sendDeploy(deployJson, wallet.publicKeyHex);
+      const outcome = await wallet.sendDeploy(run.deploy, wallet.publicKeyHex);
       if (outcome.cancelled) {
         setDeploy({ state: "cancelled" });
-      } else if (outcome.error) {
-        setDeploy({ state: "error", message: outcome.error });
+      } else if (outcome.error || !outcome.deployHash) {
+        setDeploy({
+          state: "error",
+          message: outcome.error ?? "Wallet returned no deploy hash",
+        });
       } else {
-        const hash = outcome.deployHash ?? deployHashHex;
-        setDeploy({ state: "sent", deployHash: hash });
+        setDeploy({ state: "sent", deployHash: outcome.deployHash });
+        const faceValueMotes = proposal?.faceValueMotes ?? "0";
         onNoteOpened?.({
-          noteId: contractArgs.noteId,
-          seller: contractArgs.sellerAddress,
-          faceValueMotes: contractArgs.faceValueMotes,
-          fundingCspr: usdToFundingCspr(result.decision.fundingAmount),
-          fundingUsd: result.decision.fundingAmount,
-          riskScore: contractArgs.riskScore,
-          riskDataHash: contractArgs.riskDataHash,
-          deployHash: hash,
-          invoiceId: result.invoice.invoice_id,
+          noteId,
+          seller: sellerAddress.trim() || wallet.publicKeyHex,
+          faceValueMotes,
+          fundingCspr: Number(motesToCspr(faceValueMotes)),
+          fundingUsd: scenario.invoice.face_value,
+          riskScore: report?.riskScore ?? 0,
+          riskDataHash: report?.riskDataHash ?? "",
+          deployHash: outcome.deployHash,
+          invoiceId: scenario.invoice.invoice_id,
           status: "open",
         });
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error("[underwrite-panel] failed to build open_note deploy:", message);
+      console.error("[underwrite-panel] failed to sign open_note deploy:", message);
       setDeploy({ state: "error", message });
     }
   };
 
-  const approved = result?.decision.approved ?? false;
+  const proposed = run?.noteProposed === true && Boolean(run?.deploy);
 
   return (
     <section className={styles.card}>
       <div className={styles.heading}>
         <h2>Underwrite invoice &amp; open note</h2>
-        <span>x402 paid risk data, HMAC verify, AI decision</span>
+        <span>x402 paid risk data, HMAC verify, agent reads the contract</span>
       </div>
 
       <div className={styles.controls}>
@@ -194,16 +214,16 @@ export default function UnderwritePanel({ onEvaluated, onNoteOpened }: Underwrit
             ))}
           </select>
         </label>
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>Min risk score</span>
-          <input
-            className={styles.input}
-            inputMode="numeric"
-            value={minRiskScore}
-            onChange={(e) => setMinRiskScore(e.target.value)}
-          />
-        </label>
       </div>
+
+      {/* The min risk score input is GONE, and its absence is the point: the
+          acceptance bar is a term of the contract, read by the agent from
+          chain. A form field here would let a demo pick its own bar. */}
+      <p className={styles.chainNote}>
+        The acceptance bar is not set here. The agent calls get_escrow_terms and
+        reads the minimum the contract enforces, then compares the signed score
+        against it.
+      </p>
 
       <div className={styles.invoiceSummary}>
         <div className={styles.invoiceCell}>
@@ -219,91 +239,125 @@ export default function UnderwritePanel({ onEvaluated, onNoteOpened }: Underwrit
           <span className="mono">${scenario.invoice.face_value.toLocaleString()}</span>
         </div>
         <div className={styles.invoiceCell}>
-          <span className={styles.label}>Days overdue</span>
-          <span className="mono">{scenario.invoice.days_overdue}</span>
+          <span className={styles.label}>On-chain note</span>
+          <span className="mono">
+            {usdToFundingCspr(scenario.invoice.face_value)} CSPR
+          </span>
         </div>
       </div>
+
+      <label className={styles.field}>
+        <span className={styles.fieldLabel}>Seller public key (receives funding)</span>
+        <input
+          className={styles.input}
+          placeholder={wallet.publicKeyHex ?? "0202abc... or account-hash-..."}
+          value={sellerAddress}
+          onChange={(e) => setSellerAddress(e.target.value)}
+        />
+      </label>
 
       <button
         type="button"
         className={styles.primaryButton}
-        onClick={runEvaluation}
+        onClick={runUnderwritingFlow}
         disabled={loading}
       >
-        {loading ? "Underwriting..." : "Fetch signed risk report & underwrite"}
+        {loading ? "Agent is underwriting..." : "Run the underwriting agent"}
       </button>
 
       {error && <div className={styles.errorBanner}>{error}</div>}
 
-      {result && (
+      {run && (
         <>
           <div className={styles.pipeline}>
-            <div className={styles.pipelineTitle}>Paid data request</div>
-            <div className={styles.pipelineStep}>
-              <span className={styles.mark}>1</span>
-              <span>HTTP 402 Payment Required returned by the risk data provider</span>
+            <div className={styles.pipelineTitle}>
+              What the agent did ({run.toolCalls} tool calls over {run.steps} steps)
             </div>
-            <div className={styles.pipelineStep}>
-              <span className={styles.mark}>2</span>
-              <span>Agent paid the reference and re-requested the risk report</span>
-            </div>
-            <div className={styles.pipelineStep}>
-              <span className={styles.mark}>3</span>
-              <span>Signed risk report received for {result.riskReport.debtor}</span>
-            </div>
-            <div className={styles.badgeRow}>
-              <span
-                className={`${styles.badge} ${
-                  result.dataSignatureValid ? styles.badgePass : styles.badgeFail
-                }`}
-              >
-                {result.dataSignatureValid ? "SIGNATURE PASS" : "SIGNATURE FAIL"}
+            {run.trace
+              .filter((t) => t.kind === "tool_call")
+              .map((t, i) => (
+                <div key={`${t.step}-${i}`} className={styles.pipelineStep}>
+                  <span className={styles.mark}>{i + 1}</span>
+                  <span className="mono">{t.tool}</span>
+                </div>
+              ))}
+            {report && (
+              <div className={styles.badgeRow}>
+                <span
+                  className={`${styles.badge} ${
+                    report.signatureValid ? styles.badgePass : styles.badgeFail
+                  }`}
+                >
+                  {report.signatureValid ? "SIGNATURE PASS" : "SIGNATURE FAIL"}
+                </span>
+                {report.paidVia402 && (
+                  <span className={styles.badge}>PAID VIA 402</span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {report && terms && (
+            <div className={styles.comparison}>
+              <div className={styles.comparisonCell}>
+                <span className={styles.label}>Risk score</span>
+                <span className={`${styles.value} mono`}>{report.riskScore}</span>
+              </div>
+              <span className={styles.comparisonOperator}>
+                {report.riskScore >= terms.minRiskScore ? ">=" : "<"}
               </span>
+              <div className={styles.comparisonCell}>
+                <span className={styles.label}>Contract minimum</span>
+                <span className={`${styles.value} mono`}>{terms.minRiskScore}</span>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className={styles.comparison}>
-            <div className={styles.comparisonCell}>
-              <span className={styles.label}>Risk score</span>
-              <span className={`${styles.value} mono`}>{result.riskReport.riskScore}</span>
-            </div>
-            <span className={styles.comparisonOperator}>{approved ? ">=" : "<"}</span>
-            <div className={styles.comparisonCell}>
-              <span className={styles.label}>Min threshold</span>
-              <span className={`${styles.value} mono`}>{minRiskScore}</span>
-            </div>
-          </div>
+          {report && (
+            <ul className={styles.factors}>
+              {report.factors.map((factor, i) => (
+                <li key={i} className={styles.factor}>
+                  {factor}
+                </li>
+              ))}
+            </ul>
+          )}
 
-          <ul className={styles.factors}>
-            {result.riskReport.factors.map((factor, i) => (
-              <li key={i} className={styles.factor}>
-                {factor}
-              </li>
-            ))}
-          </ul>
+          {/* The bond gate, stated where it bites. open_note checks is_bonded
+              BEFORE the risk score, so an unbonded desk is refused no matter
+              how good the paper is. */}
+          {terms && !terms.underwriterIsBonded && (
+            <div className={styles.errorBanner}>
+              The underwriter has staked {motesToCspr(terms.underwriterBondMotes)} CSPR
+              against a {motesToCspr(terms.minBondMotes)} CSPR minimum. open_note
+              reverts NotBonded until the bond is posted above.
+            </div>
+          )}
 
           <div
             className={`${styles.outcome} ${
-              approved ? styles.outcomeApproved : styles.outcomeDeclined
+              proposed ? styles.outcomeApproved : styles.outcomeDeclined
             }`}
           >
             <span className={styles.outcomeLabel}>
-              {approved
-                ? `Approved, advance ${(result.decision.recommendedAdvanceRate * 100).toFixed(0)}%`
-                : "Declined, note not opened"}
+              {proposed
+                ? "Agent proposed a note, awaiting the owner's signature"
+                : "No note proposed"}
             </span>
-            {approved && (
+            {proposal && !proposal.prepared && proposal.refusedBy && (
               <div className={styles.fundingRow}>
                 <span>
-                  USD advance:{" "}
-                  <strong className="mono">
-                    ${result.decision.fundingAmount.toLocaleString()}
-                  </strong>
+                  Refused by contract clause{" "}
+                  <strong className="mono">{proposal.refusedBy}</strong>
                 </span>
+              </div>
+            )}
+            {proposed && proposal?.faceValueMotes && (
+              <div className={styles.fundingRow}>
                 <span>
-                  On-chain face value:{" "}
+                  Note face value:{" "}
                   <strong className="mono">
-                    {usdToFundingCspr(result.decision.fundingAmount)} CSPR
+                    {motesToCspr(proposal.faceValueMotes)} CSPR
                   </strong>
                   <span className={styles.rateHint}>
                     (demo: ${DEMO_USD_PER_CSPR.toLocaleString()} USD per 1 CSPR)
@@ -311,17 +365,16 @@ export default function UnderwritePanel({ onEvaluated, onNoteOpened }: Underwrit
                 </span>
               </div>
             )}
-            <p className={styles.memo}>{result.decision.memo}</p>
+            <p className={styles.memo}>{run.finalText || run.explanation}</p>
           </div>
 
           <div className={styles.chainSection}>
             <div className={styles.ownerRow}>
               <p className={styles.chainNote}>
-                open_note is owner-gated on-chain: only the wallet holding the ReceivableEscrow
-                owner key (the agent-underwriter authority) can execute it, and the risk score
-                must clear the contract&apos;s configured minimum. The invoice id maps to a
-                deterministic u64 note id, and the seller public key below is encoded as the
-                Odra Address that receives investor funding.
+                The agent never holds a key and never broadcasts. It builds an
+                unsigned open_note deploy; only the escrow owner can turn it into
+                a note, and the contract re-checks the bond, the note id and the
+                risk score independently.
               </p>
               {isOwner ? (
                 <span className={styles.ownerBadge}>Owner wallet connected</span>
@@ -331,41 +384,38 @@ export default function UnderwritePanel({ onEvaluated, onNoteOpened }: Underwrit
                 </span>
               )}
             </div>
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Seller public key (Address)</span>
-              <input
-                className={styles.input}
-                placeholder="0202abc... or account-hash-..."
-                value={sellerAddress}
-                onChange={(e) => setSellerAddress(e.target.value)}
-                disabled={!approved}
-              />
-            </label>
-            {approved && result.noteArgs && (
+            {proposal?.deployHashHex && (
               <div className={styles.notePreview}>
                 <span>
-                  note_id <strong className="mono">{noteIdFromString(result.noteArgs.note_id)}</strong>
-                </span>
-                <span>
-                  risk_data_hash{" "}
+                  proposed deploy{" "}
                   <strong className="mono">
-                    {truncateHex(result.noteArgs.risk_data_hash, 10, 8)}
+                    {truncateHex(proposal.deployHashHex, 10, 8)}
                   </strong>
                 </span>
+                {report && (
+                  <span>
+                    risk_data_hash{" "}
+                    <strong className="mono">
+                      {truncateHex(report.riskDataHash, 10, 8)}
+                    </strong>
+                  </span>
+                )}
               </div>
             )}
             <button
               type="button"
               className={styles.primaryButton}
-              onClick={openNoteOnChain}
-              disabled={!approved || !isOwner || deploy.state === "pending"}
+              onClick={signProposedNote}
+              disabled={!proposed || !isOwner || deploy.state === "pending"}
             >
-              {deploy.state === "pending" ? "Awaiting wallet..." : "Open note on-chain"}
+              {deploy.state === "pending"
+                ? "Awaiting wallet..."
+                : "Sign & open note on-chain"}
             </button>
 
             {deploy.state === "sent" && (
               <div className={styles.deployResult}>
-                <span>Deploy submitted.</span>
+                <span>Deploy accepted by the node.</span>
                 <a href={explorerDeployUrl(deploy.deployHash)} target="_blank" rel="noreferrer">
                   {explorerDeployUrl(deploy.deployHash)}
                 </a>

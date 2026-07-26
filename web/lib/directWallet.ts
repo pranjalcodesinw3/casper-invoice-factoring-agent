@@ -31,6 +31,10 @@ interface CasperWalletApi {
   requestConnection: () => Promise<boolean>;
   getActivePublicKey: () => Promise<string>;
   disconnectFromSite?: () => Promise<boolean>;
+  sign: (
+    deployJson: string,
+    signingPublicKeyHex: string
+  ) => Promise<{ cancelled?: boolean; signature?: Uint8Array | number[] }>;
 }
 
 type ProviderFactory = (opts?: { timeout?: number }) => CasperWalletApi;
@@ -89,4 +93,48 @@ export async function disconnectDirect(): Promise<void> {
     // Best effort. A failed disconnect must not strand the UI in a connected
     // state it cannot leave, and the local state is cleared by the caller.
   }
+}
+
+/** What the extension returns for a signature request. */
+export interface DirectSignResult {
+  cancelled: boolean;
+  /** Raw signature bytes, without the algorithm prefix byte. */
+  signature: Uint8Array | null;
+}
+
+/**
+ * Opens the extension's approval popup for a deploy and returns the signature.
+ *
+ * The extension signs; it does NOT broadcast. The caller attaches the
+ * signature as an approval and PUTs the deploy to a node itself, which is why
+ * this returns bytes rather than a deploy hash. Anything that returned a hash
+ * from here would be returning a hash for something that never left the
+ * browser.
+ *
+ * `cancelled` is a first-class outcome: the user declining in the popup is not
+ * an error, and rendering it as one trains a demo audience to ignore errors.
+ */
+export async function signDeployDirect(
+  deployJson: unknown,
+  signingPublicKeyHex: string
+): Promise<DirectSignResult> {
+  const make = factory();
+  if (!make) {
+    throw new Error("No Casper Wallet extension detected in this browser");
+  }
+  const provider = make();
+  const result = await provider.sign(
+    JSON.stringify(deployJson),
+    signingPublicKeyHex
+  );
+  if (result?.cancelled) {
+    return { cancelled: true, signature: null };
+  }
+  if (!result?.signature) {
+    throw new Error("Wallet returned no signature");
+  }
+  return {
+    cancelled: false,
+    signature: new Uint8Array(result.signature as ArrayLike<number>),
+  };
 }

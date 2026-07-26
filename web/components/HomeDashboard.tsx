@@ -19,16 +19,18 @@ import { useCallback, useState } from "react";
 import BondPanel from "@/components/BondPanel";
 import DecisionLedger from "@/components/DecisionLedger";
 import FundNotePanel from "@/components/FundNotePanel";
+import ProofPanel from "@/components/ProofPanel";
 import UnderwritePanel, { OpenedNote } from "@/components/UnderwritePanel";
 import WalletButton from "@/components/WalletButton";
-import { UnderwritingResult } from "@/lib/agent-client";
+import type { UnderwriteRunResponse } from "@/lib/agent-client";
 
 const CONTRACT_HASH = process.env.NEXT_PUBLIC_CONTRACT_HASH;
 const PACKAGE =
-  "1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec";
+  process.env.NEXT_PUBLIC_CONTRACT_PACKAGE_HASH?.replace(/^hash-/, "") ??
+  "c22bbc3276256cc3fd1a2bc7eaa95464216cfbf0d938676edbdb9d8d9dd2c48a";
 
 export default function HomeDashboard() {
-  const [, setResult] = useState<UnderwritingResult | null>(null);
+  const [, setResult] = useState<UnderwriteRunResponse | null>(null);
   const [notes, setNotes] = useState<OpenedNote[]>([]);
 
   const onNoteOpened = useCallback((note: OpenedNote) => {
@@ -39,6 +41,18 @@ export default function HomeDashboard() {
     setNotes((prev) =>
       prev.map((n) =>
         n.noteId === noteId ? { ...n, status: "funded" as const, fundDeployHash } : n
+      )
+    );
+  }, []);
+
+  // Was declared and never passed, so a note stayed "Funded" in the proof
+  // table after mark_repaid had actually executed on chain and the panel had
+  // its receipt. The lifecycle the product is about ended one step early in
+  // the only place a judge looks at it.
+  const onNoteRepaid = useCallback((noteId: number, repayDeployHash: string) => {
+    setNotes((prev) =>
+      prev.map((n) =>
+        n.noteId === noteId ? { ...n, status: "repaid" as const, repayDeployHash } : n
       )
     );
   }, []);
@@ -91,23 +105,32 @@ export default function HomeDashboard() {
                 onEvaluated={setResult}
                 onNoteOpened={onNoteOpened}
               />
-              <FundNotePanel notes={notes} onNoteFunded={onNoteFunded} />
+              <FundNotePanel
+                notes={notes}
+                onNoteFunded={onNoteFunded}
+                onNoteRepaid={onNoteRepaid}
+              />
             </div>
 
             {/* The book. */}
-            <DecisionLedger />
+            <div className="space-y-6">
+              {/* Live session receipts sit above the historical ledger: what
+                  just happened on stage is the thing being demonstrated. */}
+              <ProofPanel notes={notes} />
+              <DecisionLedger />
+            </div>
           </div>
         </div>
 
         <footer className="mt-14 border-t border-desk-700 pt-6">
           <p className="max-w-3xl text-fig-sm leading-relaxed text-ink-muted">
-            The deployed contract exposes seven entry points:{" "}
+            The deployed contract exposes thirteen entry points:{" "}
             <code className="font-mono text-ink-faint">
-              init, open_note, fund_note, mark_repaid, get_owner,
+              init, open_note, fund_note, mark_repaid, post_bond, withdraw_bond,
+              declare_default, get_bond, is_bonded, min_bond, get_owner,
               get_min_risk_score, get_note
             </code>
-            . Anything shown above that is not one of those is labelled where it
-            appears.
+            . Every control above calls one of them.
             {CONTRACT_HASH && (
               <>
                 {" "}

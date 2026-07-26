@@ -27,13 +27,23 @@ interface HarnessOpts {
   /** Existing note keyed by id, for the uniqueness check. */
   existingNote?: { status: string } | null;
   signatureValid?: boolean;
+  /** Motes the underwriter has staked. Below `minBondMotes` means unbonded. */
+  stakedMotes?: string;
+  minBondMotes?: string;
 }
+
+const OWNER =
+  "account-hash-45a102199a961184ce2c34198facfee7c08073bdc05eba127650019c7dacdbe4";
 
 function harness(opts: HarnessOpts = {}) {
   const {
     minRiskScore = 60,
     existingNote = null,
     signatureValid = true,
+    minBondMotes = "10000000000",
+    // Bonded by default: the bond gate is asserted explicitly below, and
+    // leaving every other test to trip over it would hide what they test.
+    stakedMotes = "10000000000",
   } = opts;
   const proposed: Array<{ noteId: string; riskScore: number }> = [];
 
@@ -42,6 +52,16 @@ function harness(opts: HarnessOpts = {}) {
       getMinRiskScore: async () => minRiskScore,
       getNote: async () => existingNote,
       getEscrowTerms: async () => ({ minRiskScore }),
+      getOwner: async () => OWNER,
+      getMinBondMotes: async () => minBondMotes,
+      getBlockTime: async () => 1_700_000_000_000,
+      getEscrowBalanceMotes: async () => null,
+      getBond: async () => ({
+        amountMotes: stakedMotes,
+        slashedMotes: "0",
+        defaults: 0,
+      }),
+      isBonded: async () => BigInt(stakedMotes) >= BigInt(minBondMotes),
     },
     oracle: {
       fetchSigned: async () => ({
@@ -202,4 +222,56 @@ test("motes conversion does not lose precision at amounts a float would round", 
   assert.equal(csprToMotes("0.2"), 200_000_000n);
   assert.equal(csprToMotes("0.3"), 300_000_000n);
   assert.equal(csprToMotes("9007199254.740993"), 9_007_199_254_740_993_000n);
+});
+
+/* ------------------------------------------------------------------ *
+ * The bond gate
+ *
+ * open_note checks `is_bonded` BEFORE it looks at the risk score, so an
+ * unbonded underwriter is refused NotBonded no matter how good the paper is.
+ * The tool layer has to check the same clause in the same order, otherwise it
+ * prepares a deploy whose only possible outcome is a revert that still burns
+ * the whole gas limit on Casper 2.x.
+ * ------------------------------------------------------------------ */
+
+test("an unbonded underwriter is refused NotBonded before the risk score matters", async () => {
+  // Staked below the minimum, and a risk score well ABOVE the bar: if the
+  // order were wrong this would pass the score check and prepare a deploy.
+  const { tools, proposed } = harness({
+    stakedMotes: "1",
+    minBondMotes: "10000000000",
+    minRiskScore: 60,
+  });
+
+  const res = await tool(tools, "propose_open_note").execute({
+    ...GOOD_ARGS,
+    riskScore: 95,
+  });
+
+  assert.equal(res.prepared, false);
+  assert.equal(res.refusedBy, "NotBonded");
+  assert.equal(proposed.length, 0, "no deploy may be built for an unbonded desk");
+});
+
+test("a fully bonded underwriter clears the gate and the note is prepared", async () => {
+  const { tools, proposed } = harness({
+    stakedMotes: "10000000000",
+    minBondMotes: "10000000000",
+  });
+
+  const res = await tool(tools, "propose_open_note").execute(GOOD_ARGS);
+
+  assert.equal(res.prepared, true);
+  assert.equal(proposed.length, 1);
+});
+
+test("get_escrow_terms reports the bond so the model can see the gate", async () => {
+  const { tools } = harness({ stakedMotes: "0", minBondMotes: "10000000000" });
+
+  const terms = await tool(tools, "get_escrow_terms").execute({});
+
+  assert.equal(terms.minBondMotes, "10000000000");
+  assert.equal(terms.underwriterBondMotes, "0");
+  assert.equal(terms.underwriterIsBonded, false);
+  assert.match(String(terms.note), /NotBonded/);
 });

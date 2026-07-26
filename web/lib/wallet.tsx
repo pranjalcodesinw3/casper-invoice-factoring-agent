@@ -12,7 +12,8 @@ import {
 } from "react";
 import type { AccountType } from "@make-software/csprclick-core-types";
 
-import { connectDirect, disconnectDirect } from "@/lib/directWallet";
+import { connectDirect, disconnectDirect, signDeployDirect } from "@/lib/directWallet";
+import { signAndSendDeploy } from "@/lib/casper";
 
 /**
  * How long to wait for CSPR.click to answer its own sign-in before falling
@@ -230,6 +231,37 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const sendDeploy = useCallback(
     async (deployJson: unknown, signingPublicKeyHex: string): Promise<SendDeployOutcome> => {
+      // The extension path, used whenever CSPR.click never produced an
+      // account. `clickRef.send` signs AND broadcasts; the extension only
+      // signs, so this path has to broadcast the signed deploy itself.
+      //
+      // This is not a fallback in practice, it is the path: CSPR.click's
+      // iframe mode registers no wallet, so `connect()` times out into
+      // `runDirect` on every run and `clickRef.send` would be signing for an
+      // account it never authenticated.
+      const useDirect = directKey !== null || clickRef == null;
+      if (useDirect) {
+        try {
+          const { cancelled, signature } = await signDeployDirect(
+            deployJson,
+            signingPublicKeyHex
+          );
+          if (cancelled || !signature) {
+            return { cancelled: true, deployHash: null, error: null };
+          }
+          const deployHash = await signAndSendDeploy(
+            deployJson as Record<string, unknown>,
+            signingPublicKeyHex,
+            signature
+          );
+          return { cancelled: false, deployHash, error: null };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error("[wallet] direct send failed:", message);
+          return { cancelled: false, deployHash: null, error: message };
+        }
+      }
+
       if (!clickRef) {
         return { cancelled: true, deployHash: null, error: "Wallet is still loading" };
       }
@@ -249,7 +281,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         return { cancelled: false, deployHash: null, error: message };
       }
     },
-    [clickRef]
+    [clickRef, directKey]
   );
 
   const value = useMemo<WalletState>(

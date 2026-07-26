@@ -26,6 +26,26 @@ const CONTRACT_HASH =
   process.env.CONTRACT_HASH ??
   "hash-1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec";
 
+/**
+ * Demo notional: USD of invoice face value represented by 1 CSPR on testnet.
+ *
+ * Invoices are denominated in USD and notes are denominated in motes, so
+ * something has to bridge them. The old prompt said "Face value 150000 CSPR"
+ * for a $150,000 invoice, which asked an investor to attach 150,000 CSPR to
+ * fund one note. No testnet wallet holds that, so every note the agent opened
+ * was unfundable by construction and the demo died at fund_note. Mirrors
+ * NEXT_PUBLIC_DEMO_USD_PER_CSPR in the web app; both default to 10,000.
+ */
+const DEMO_USD_PER_CSPR = Number(process.env.DEMO_USD_PER_CSPR ?? "10000");
+if (!Number.isFinite(DEMO_USD_PER_CSPR) || DEMO_USD_PER_CSPR <= 0) {
+  throw new Error("DEMO_USD_PER_CSPR must be a positive number");
+}
+
+/** USD face value to the demo CSPR amount a note is actually denominated in. */
+export function usdToDemoCspr(usd: number): string {
+  return (Math.round((usd / DEMO_USD_PER_CSPR) * 100) / 100).toFixed(2);
+}
+
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
   .split(",")
   .map((o) => o.trim())
@@ -97,6 +117,52 @@ app.get("/health", (_req: Request, res: Response) => {
   res.json({ status: "ok", service: "invoice-factoring-agent" });
 });
 
+/**
+ * Live escrow terms, including the underwriter's bond.
+ *
+ * The UI needs these to render the bond panel, and it must not compute them
+ * itself: the Odra state-dictionary derivation (blake2b over a nibble-packed
+ * field path) lives in `escrow-reader`, and a second copy in the browser is a
+ * second place for the layout to drift. This repo already shipped a UI that
+ * claimed the contract had 7 entry points while the chain had 13.
+ *
+ * A read failure is a 502, never a zero. "This underwriter has posted no bond"
+ * and "we could not check" must not render the same.
+ */
+app.get("/api/escrow-terms", async (req: Request, res: Response) => {
+  const requested = req.query.underwriter;
+  if (requested !== undefined && typeof requested !== "string") {
+    return res.status(400).json({ error: "underwriter must be a single value" });
+  }
+  try {
+    const [owner, minRiskScore, minBondMotes] = await Promise.all([
+      underwriter.reader.getOwner(),
+      underwriter.reader.getMinRiskScore(),
+      underwriter.reader.getMinBondMotes(),
+    ]);
+    // Default to the escrow owner: a visitor with no wallet connected should
+    // still see whether the desk itself is collateralised.
+    const address = requested ?? owner;
+    const bond = await underwriter.reader.getBond(address);
+    const stakedMotes = bond?.amountMotes ?? "0";
+
+    res.json({
+      owner,
+      minRiskScore,
+      underwriter: address,
+      minBondMotes,
+      stakedMotes,
+      slashedMotes: bond?.slashedMotes ?? "0",
+      defaults: bond?.defaults ?? 0,
+      bonded: BigInt(stakedMotes) >= BigInt(minBondMotes),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[server] escrow-terms read failed:", message);
+    res.status(502).json({ error: message });
+  }
+});
+
 app.post("/api/underwrite", async (req: Request, res: Response) => {
   const parsed = UnderwriteSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -113,9 +179,14 @@ app.post("/api/underwrite", async (req: Request, res: Response) => {
 
   try {
     const proposer = new DeployNoteProposer(CONTRACT_HASH, caller_pubkey);
+    const noteCspr = usdToDemoCspr(invoice.face_value);
     const request =
       `Underwrite invoice ${invoice.invoice_id} from debtor ${debtor_id}. ` +
-      `Face value ${invoice.face_value} CSPR, ${invoice.days_overdue} days overdue. ` +
+      `Face value $${invoice.face_value.toLocaleString("en-US")} USD, ` +
+      `${invoice.days_overdue} days overdue. ` +
+      `On testnet this note is denominated at ${noteCspr} CSPR ` +
+      `(demo rate: $${DEMO_USD_PER_CSPR.toLocaleString("en-US")} USD per 1 CSPR), ` +
+      `so pass faceValueCspr exactly "${noteCspr}". ` +
       `The seller's Casper public key is ${seller_pubkey}. ` +
       `Open a note if and only if the contract's own terms allow it.`;
 

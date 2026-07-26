@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  buildDeclareDefaultDeploy,
   buildFundNoteDeploy,
   buildMarkRepaidDeploy,
   DEMO_USD_PER_CSPR,
@@ -40,6 +41,7 @@ export default function FundNotePanel({
   const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
   const [fundDeploy, setFundDeploy] = useState<DeployStatus>({ state: "idle" });
   const [repayDeploy, setRepayDeploy] = useState<DeployStatus>({ state: "idle" });
+  const [defaultDeploy, setDefaultDeploy] = useState<DeployStatus>({ state: "idle" });
 
   const isOwner = isOwnerPublicKey(wallet.publicKeyHex, OWNER_PUBLIC_KEY);
 
@@ -74,7 +76,7 @@ export default function FundNotePanel({
 
     setFundDeploy({ state: "pending" });
     try {
-      const { deployJson, deployHashHex } = await buildFundNoteDeploy(
+      const { deployJson } = await buildFundNoteDeploy(
         CONTRACT_PACKAGE_HASH,
         wallet.publicKeyHex,
         selectedNote.noteId,
@@ -84,12 +86,16 @@ export default function FundNotePanel({
       const outcome = await wallet.sendDeploy(deployJson, wallet.publicKeyHex);
       if (outcome.cancelled) {
         setFundDeploy({ state: "cancelled" });
-      } else if (outcome.error) {
-        setFundDeploy({ state: "error", message: outcome.error });
+      } else if (outcome.error || !outcome.deployHash) {
+        // Never fall back to the locally built hash. It is computable before
+        // signing, so showing it would link to a "deploy" the node never saw.
+        setFundDeploy({
+          state: "error",
+          message: outcome.error ?? "Wallet returned no deploy hash",
+        });
       } else {
-        const hash = outcome.deployHash ?? deployHashHex;
-        setFundDeploy({ state: "sent", deployHash: hash });
-        onNoteFunded?.(selectedNote.noteId, hash);
+        setFundDeploy({ state: "sent", deployHash: outcome.deployHash });
+        onNoteFunded?.(selectedNote.noteId, outcome.deployHash);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -117,7 +123,7 @@ export default function FundNotePanel({
 
     setRepayDeploy({ state: "pending" });
     try {
-      const { deployJson, deployHashHex } = buildMarkRepaidDeploy(
+      const { deployJson } = buildMarkRepaidDeploy(
         CONTRACT_HASH,
         wallet.publicKeyHex,
         note.noteId
@@ -126,17 +132,70 @@ export default function FundNotePanel({
       const outcome = await wallet.sendDeploy(deployJson, wallet.publicKeyHex);
       if (outcome.cancelled) {
         setRepayDeploy({ state: "cancelled" });
-      } else if (outcome.error) {
-        setRepayDeploy({ state: "error", message: outcome.error });
+      } else if (outcome.error || !outcome.deployHash) {
+        setRepayDeploy({
+          state: "error",
+          message: outcome.error ?? "Wallet returned no deploy hash",
+        });
       } else {
-        const hash = outcome.deployHash ?? deployHashHex;
-        setRepayDeploy({ state: "sent", deployHash: hash });
-        onNoteRepaid?.(note.noteId, hash);
+        setRepayDeploy({ state: "sent", deployHash: outcome.deployHash });
+        onNoteRepaid?.(note.noteId, outcome.deployHash);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("[fund-note-panel] failed to build mark_repaid deploy:", message);
       setRepayDeploy({ state: "error", message });
+    }
+  };
+
+  /**
+   * Declares a funded note in default, paying its investor out of the
+   * underwriter's bond.
+   *
+   * This is the entrypoint the whole product argues for, and it had no control
+   * at all: the bond was described in prose while the only way to exercise a
+   * slash was a script. The honest boundary is stated at the button, because a
+   * contract cannot observe that an invoice went unpaid in the real world.
+   */
+  const declareDefaultOnChain = async (note: OpenedNote) => {
+    if (!CONTRACT_HASH) {
+      setDefaultDeploy({ state: "error", message: "NEXT_PUBLIC_CONTRACT_HASH is not configured." });
+      return;
+    }
+    if (!wallet.publicKeyHex) {
+      setDefaultDeploy({ state: "error", message: "Connect the owner wallet before declaring a default." });
+      return;
+    }
+    if (!isOwner) {
+      setDefaultDeploy({
+        state: "error",
+        message: "declare_default is owner-gated. Connect the contract owner key.",
+      });
+      return;
+    }
+
+    setDefaultDeploy({ state: "pending" });
+    try {
+      const { deployJson } = buildDeclareDefaultDeploy(
+        CONTRACT_HASH,
+        wallet.publicKeyHex,
+        note.noteId
+      );
+      const outcome = await wallet.sendDeploy(deployJson, wallet.publicKeyHex);
+      if (outcome.cancelled) {
+        setDefaultDeploy({ state: "cancelled" });
+      } else if (outcome.error || !outcome.deployHash) {
+        setDefaultDeploy({
+          state: "error",
+          message: outcome.error ?? "Wallet returned no deploy hash",
+        });
+      } else {
+        setDefaultDeploy({ state: "sent", deployHash: outcome.deployHash });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[fund-note-panel] failed to build declare_default deploy:", message);
+      setDefaultDeploy({ state: "error", message });
     }
   };
 
@@ -268,9 +327,49 @@ export default function FundNotePanel({
                     >
                       {repayDeploy.state === "pending" ? "Awaiting wallet..." : "Mark repaid"}
                     </button>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => declareDefaultOnChain(note)}
+                      disabled={!isOwner || defaultDeploy.state === "pending"}
+                      title="Pays this note's investor out of the underwriter's bond"
+                    >
+                      {defaultDeploy.state === "pending"
+                        ? "Awaiting wallet..."
+                        : "Declare default"}
+                    </button>
                   </li>
                 ))}
               </ul>
+
+              {/* The honest boundary, stated at the control rather than in a
+                  footer: the chain cannot see that an invoice went unpaid. */}
+              <p className={styles.chainNote}>
+                declare_default is the slash path. A contract cannot observe a
+                real-world non-payment, so the declaration is an owner call. What
+                the contract enforces is everything after it: only a funded note
+                can default, the payout is capped by what was actually staked,
+                and the money goes to the note&apos;s recorded investor.
+              </p>
+
+              {defaultDeploy.state === "sent" && (
+                <div className={styles.deployResult}>
+                  <span>NoteDefaulted deploy submitted, bond slashed to the investor.</span>
+                  <a
+                    href={explorerDeployUrl(defaultDeploy.deployHash)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {explorerDeployUrl(defaultDeploy.deployHash)}
+                  </a>
+                </div>
+              )}
+              {defaultDeploy.state === "cancelled" && (
+                <div className={styles.deployResult}>Signing was cancelled in the wallet.</div>
+              )}
+              {defaultDeploy.state === "error" && (
+                <div className={styles.deployError}>{defaultDeploy.message}</div>
+              )}
 
               {repayDeploy.state === "sent" && (
                 <div className={styles.deployResult}>
