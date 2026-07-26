@@ -10,7 +10,7 @@
  */
 @layer base {
   :root {
-    color-scheme: dark;
+    color-scheme: light;
 
     /* Desk tokens, exposed as CSS variables so the panels still written as CSS
        modules (UnderwritePanel, FundNotePanel, WalletButton) resolve to the
@@ -52,13 +52,13 @@
     /* Faint ruled paper. A desk has a surface; a flat fill reads as a slide.
        Two hairlines at low alpha, never a decorative gradient wash. */
     background-image:
-      linear-gradient(to bottom, rgba(200, 150, 74, 0.03), transparent 340px),
+      linear-gradient(to bottom, rgba(255, 159, 28, 0.12), transparent 420px),
       repeating-linear-gradient(
         to bottom,
         transparent,
         transparent 31px,
-        rgba(236, 231, 223, 0.016) 31px,
-        rgba(236, 231, 223, 0.016) 32px
+        rgba(70, 44, 15, 0.035) 31px,
+        rgba(70, 44, 15, 0.035) 32px
       );
   }
 

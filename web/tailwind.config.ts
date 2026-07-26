@@ -19,25 +19,25 @@ const config: Config = {
       colors: {
         /* Warm near-black. Not #000: pure black kills the paper feel. */
         desk: {
-          950: "#0c0b09",
-          900: "#141210",
-          800: "#1c1916",
-          700: "#26221e",
-          600: "#332e28",
+          950: "#fffaf2",
+          900: "#ffffff",
+          800: "#fff3df",
+          700: "#eadbc5",
+          600: "#d7c4a9",
         },
         ink: {
-          DEFAULT: "#ece7df", // primary text, warm off-white
-          muted: "#8d857a", // labels, secondary
-          faint: "#5c554c", // rules, disabled
+          DEFAULT: "#24180d",
+          muted: "#735f4c",
+          faint: "#927b63",
         },
         /* The single accent. Used for money at risk and primary actions. */
         brass: {
-          DEFAULT: "#c8964a",
-          bright: "#e0b060",
-          dim: "#7a5c2e",
+          DEFAULT: "#ff9f1c",
+          bright: "#ffb84d",
+          dim: "#c06d00",
         },
-        approve: "#5f9e6a",
-        decline: "#b4564d",
+        approve: "#11845b",
+        decline: "#c73b32",
       },
       fontFamily: {
         sans: ["var(--font-sans)", "ui-sans-serif", "system-ui"],
@@ -55,7 +55,7 @@ const config: Config = {
         desk: "4px",
       },
       boxShadow: {
-        raise: "0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px -12px rgba(0,0,0,0.8)",
+        raise: "0 1px 0 rgba(255,255,255,0.8) inset, 0 18px 50px -28px rgba(70,44,15,0.35)",
       },
     },
   },
