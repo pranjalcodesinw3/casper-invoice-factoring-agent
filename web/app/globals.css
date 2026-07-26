@@ -1,111 +1,91 @@
-/* Invoice Factoring Agent — Midnight Desk
-   Institutional violet trading desk: deep purple-black, soft violet accent */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --bg: #0b0914;
-  --bg-raised: #13101f;
-  --fg: #ebe6f7;
-  --muted: #8b84a3;
-  --muted-2: #5a5470;
-  --border: rgba(167, 139, 250, 0.1);
-  --border-strong: rgba(167, 139, 250, 0.22);
-  --glass-bg: rgba(167, 139, 250, 0.04);
-  --glass-bg-hover: rgba(167, 139, 250, 0.08);
-  --accent: #a78bfa;
-  --accent-fg: #160f2a;
-  --accent-dim: rgba(167, 139, 250, 0.16);
-  --accent-glow: rgba(167, 139, 250, 0.32);
-  --success: #34d399;
-  --success-dim: rgba(52, 211, 153, 0.14);
-  --danger: #f472b6;
-  --danger-dim: rgba(244, 114, 182, 0.14);
-  --warn: #fbbf24;
-  --warn-dim: rgba(251, 191, 36, 0.12);
-  --radius: 14px;
-  --radius-sm: 9px;
-  --shadow-card: 0 0 0 1px var(--border), 0 20px 48px rgba(0, 0, 0, 0.5);
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-}
-
+/* The underwriting desk.
+ *
+ * Everything here sits inside @layer base so utilities always win. Unlayered
+ * resets silently override Tailwind classes, which is how a `mx-auto` quietly
+ * stops working.
+ */
 @layer base {
-  html,
-  body {
-    max-width: 100vw;
-    overflow-x: hidden;
-  }
+  :root {
+    color-scheme: dark;
 
-  body {
-    color: var(--fg);
-    background-color: var(--bg);
-    background-image:
-      radial-gradient(ellipse 55% 40% at 100% 0%, rgba(139, 92, 246, 0.18), transparent 55%),
-      radial-gradient(ellipse 45% 35% at 0% 100%, rgba(167, 139, 250, 0.1), transparent 50%),
-      linear-gradient(160deg, #0e0a1a 0%, #0b0914 40%, #0a0812 100%);
-    background-attachment: fixed;
-    font-family: var(--font-sans);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    line-height: 1.5;
-    min-height: 100vh;
+    /* Desk tokens, exposed as CSS variables so the panels still written as CSS
+       modules (UnderwritePanel, FundNotePanel, WalletButton) resolve to the
+       SAME surface, rule and accent as the Tailwind panels. Without these the
+       page renders two design languages side by side: transparent square
+       cards next to solid rounded ones. */
+    --bg: theme("colors.desk.950");
+    --bg-raised: theme("colors.desk.900");
+    --fg: theme("colors.ink.DEFAULT");
+    --muted: theme("colors.ink.muted");
+    --muted-2: theme("colors.ink.faint");
+    --border: theme("colors.desk.700");
+    --border-strong: theme("colors.desk.600");
+    --glass-bg: theme("colors.desk.900");
+    --glass-bg-hover: theme("colors.desk.800");
+    --accent: theme("colors.brass.DEFAULT");
+    --accent-fg: theme("colors.desk.950");
+    --accent-dim: rgba(200, 150, 74, 0.16);
+    --accent-glow: rgba(200, 150, 74, 0.28);
+    --success: theme("colors.approve");
+    --success-dim: rgba(95, 158, 106, 0.14);
+    --danger: theme("colors.decline");
+    --danger-dim: rgba(180, 86, 77, 0.14);
+    --radius: theme("borderRadius.desk");
+    --font-sans-stack: var(--font-sans), ui-sans-serif, system-ui;
+    --font-mono-stack: var(--font-mono), ui-monospace, monospace;
   }
 
   html {
-    color-scheme: dark;
+    /* Ledger figures must line up in columns. tabular-nums is set globally
+       rather than per-component because every number on this page is money,
+       a count, or a hash, and proportional digits make columns wobble. */
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
   }
 
-  *,
-  *::before,
-  *::after {
-    box-sizing: border-box;
+  body {
+    @apply bg-desk-950 font-sans text-ink antialiased;
+    /* Faint ruled paper. A desk has a surface; a flat fill reads as a slide.
+       Two hairlines at low alpha, never a decorative gradient wash. */
+    background-image:
+      linear-gradient(to bottom, rgba(200, 150, 74, 0.03), transparent 340px),
+      repeating-linear-gradient(
+        to bottom,
+        transparent,
+        transparent 31px,
+        rgba(236, 231, 223, 0.016) 31px,
+        rgba(236, 231, 223, 0.016) 32px
+      );
   }
 
-  body,
-  h1,
-  h2,
-  h3,
-  p,
-  figure,
-  blockquote,
-  dl,
-  dd,
-  ul,
-  ol {
-    margin: 0;
+  /* Focus is visible and brass, never the browser default blue. */
+  :focus-visible {
+    @apply outline-none ring-1 ring-brass ring-offset-2 ring-offset-desk-950;
   }
 
-  ul,
-  ol {
-    padding: 0;
-    list-style: none;
-  }
-
-  a {
-    color: inherit;
-    text-decoration: none;
-  }
-
-  button {
-    font-family: inherit;
+  ::selection {
+    background: rgba(200, 150, 74, 0.28);
   }
 }
 
-.mono {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-}
+@layer components {
+  /* A ledger rule: the horizontal line between rows on a paper ledger. */
+  .rule {
+    @apply border-t border-desk-700;
+  }
 
-::selection {
-  background: rgba(167, 139, 250, 0.35);
-  color: #fff;
-}
+  /* Column label above a figure. Small caps, muted, never shouting. */
+  .col-label {
+    @apply font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint;
+  }
 
-code {
-  font-family: var(--font-mono);
-  font-size: 0.9em;
-  padding: 0.1em 0.35em;
-  border-radius: 5px;
-  background: rgba(167, 139, 250, 0.12);
-  color: var(--accent);
-  border: 1px solid rgba(167, 139, 250, 0.2);
+  /* The panel every section sits in. Squarer and flatter than a glass card:
+     this is a form on a desk, not a floating pane. */
+  .panel {
+    @apply rounded-desk border border-desk-700 bg-desk-900;
+  }
 }
