@@ -78,8 +78,29 @@ Casper **testnet** (`casper-test`).
 
 | What | Hash | Status |
 |---|---|---|
-| Package | `1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec` | [contract-package](https://testnet.cspr.live/contract-package/1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec) — resolves |
-| Contract | `984243631528b25918c69364ba6c28893b061d1c90858e1872b7c8c0f56a8cb8` | live |
+| Package (v2, live) | `c22bbc3276256cc3fd1a2bc7eaa95464216cfbf0d938676edbdb9d8d9dd2c48a` | [contract-package](https://testnet.cspr.live/contract-package/c22bbc3276256cc3fd1a2bc7eaa95464216cfbf0d938676edbdb9d8d9dd2c48a) — 13 entry points |
+| Contract (v2, live) | `7125550f8500c097e974b95d4bc53c4afb5f3db05d40ca7de9edf7f37092d56f` | live, the one the app calls |
+| Package (v1, superseded) | `1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec` | [contract-package](https://testnet.cspr.live/contract-package/1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec) — 7 entry points, kept for its refusal receipts |
+
+### The bond lifecycle, driven from the web UI
+
+Every hash below was signed in a browser wallet on `/desk` and broadcast by
+the app. The order is the argument: `post_bond` has to come first, because
+`open_note` checks `is_bonded` before it looks at the risk score.
+
+| Step | Deploy | Result |
+|---|---|---|
+| `post_bond` (10 CSPR, the contract minimum) | [`6f0ba0c4…`](https://testnet.cspr.live/deploy/6f0ba0c4200c1ea0852548887928593d6408a4e6ae3589dd39cd426ed036560f) | executed |
+| `open_note` (risk 82 ≥ min 50, bonded) | [`41401fc8…`](https://testnet.cspr.live/deploy/41401fc88b0c9ef903616f777a0daa4bc91a398ecc702280e74f0e17458fcf82) | executed |
+| `fund_note` (15 CSPR, exact face value) | [`4102e72e…`](https://testnet.cspr.live/deploy/4102e72eca8572abc580e31c3293288b47a7063d36fd3fd0925d2bf0aea0bd8e) | executed |
+| `mark_repaid` | [`8c6e3313…`](https://testnet.cspr.live/deploy/8c6e33135cab0d7df58fa94de0848b3e470c7f0197a59132d22e83ebce2a447a) | executed |
+| `declare_default` (bond slashed to the investor) | [`54d5f236…`](https://testnet.cspr.live/deploy/54d5f236641cc758e151dcd0e93beabac40bf77a3ff3b2eb91cede3b08cbf637) | executed |
+
+After the slash the contract reports `stakedMotes 0`, `slashedMotes
+10000000000`, `defaults 1`. The note's face value was 15 CSPR and the stake was
+10, so the investor was paid 10 and the shortfall is visible rather than
+smoothed over. That cap is the whole point, and it is observable from outside
+the contract.
 
 **The full lifecycle executes on chain.** A note is opened, funded with real
 CSPR, and marked repaid, and every refusal path reverts with its own typed
@@ -123,7 +144,7 @@ you send. Funding requires a session-wasm deploy of Odra's
 
 ---
 
-## The underwriter bond: designed, tested, NOT deployed
+## The underwriter bond: deployed, and slashed on chain
 
 A minimum risk score is a threshold check, and several teams in this
 buildathon have one. It makes the underwriter's score a *filter*; it does not
@@ -159,15 +180,23 @@ work today through the session-wasm proxy, with `package_hash` passed as a raw
 the mechanism [`2233b2d0`](https://testnet.cspr.live/deploy/2233b2d0216adaf8eff0b6dc697e076590f68e6762acce21c210e6d94b528b88)
 already used to move real CSPR to a seller.
 
-**It is not deployed, and this README does not claim it is.** The contract
-carrying it would need a fresh install, and an Odra install prices at roughly
-0.00096 CSPR per wasm byte: `ReceivableEscrow.wasm` is 278,533 bytes, so about
-268 CSPR consumed and ~335 with headroom, before the bond module grows it. The
-signing key holds **9.59 CSPR**, and every key across all five of our projects
-holds ~97 CSPR combined. There is no keyless faucet path. So the module ships
-as source and 14 tests, and the claim stops exactly where the evidence does:
-**designed and tested off chain, never executed on chain.** `judge.yaml`
-credits it with nothing.
+**It is deployed now, and it has been slashed.** This section previously said
+the module shipped as source and 14 tests because the signing key could not
+afford the install. That is no longer true: v2 is live at package
+[`c22bbc32…`](https://testnet.cspr.live/contract-package/c22bbc3276256cc3fd1a2bc7eaa95464216cfbf0d938676edbdb9d8d9dd2c48a)
+with 13 entry points, read back from the contract's own state rather than from
+a build log, and the full path has executed from the web UI:
+[`post_bond`](https://testnet.cspr.live/deploy/6f0ba0c4200c1ea0852548887928593d6408a4e6ae3589dd39cd426ed036560f)
+staked 10 CSPR, and
+[`declare_default`](https://testnet.cspr.live/deploy/54d5f236641cc758e151dcd0e93beabac40bf77a3ff3b2eb91cede3b08cbf637)
+paid it out to the investor of a defaulted note.
+
+The claim still stops where the evidence does. Declaring the default is an
+owner call, because a contract cannot observe that an invoice went unpaid in
+the real world. What the contract enforces is everything downstream of the
+declaration: only a funded note can default, the payout is capped by what was
+actually staked, and the money goes to the note's recorded investor rather
+than to whoever asked.
 
 ## Honest limits
 
@@ -181,15 +210,18 @@ credits it with nothing.
 - **The risk score is signed by our own provider**, with a shared HMAC secret.
   It is a working payment-and-signature handshake, not an independent credit
   oracle, and a third party cannot verify a report from the chain alone.
-- **No repayment or default path.** The contract opens and funds notes. What
-  happens when the debtor pays late, partially, or never is not modelled.
+- **Default is declared, not detected.** `declare_default` pays the investor
+  from the bond, and that transfer is real. But the *declaration* is an owner
+  call: nothing on chain observes that the debtor failed to pay. Partial and
+  late payment are still not modelled at all.
 - **No secondary market.** A note is not transferable.
-- **One module, 7 entrypoints on chain.** That is the *deployed* surface,
-  read from the contract's own state: `init`, `open_note`, `fund_note`,
-  `mark_repaid`, `get_owner`, `get_min_risk_score`, `get_note`. The source
-  now parses to 21 because it also contains the underwriter bond, which is
-  written and tested but **not deployed**. Wherever this project states an
-  entrypoint count, it is the deployed 7.
+- **One module, 13 entrypoints on chain.** That is the *deployed* surface,
+  read from the contract's own state rather than from a build log: `init`,
+  `open_note`, `fund_note`, `mark_repaid`, `post_bond`, `withdraw_bond`,
+  `declare_default`, `get_bond`, `is_bonded`, `min_bond`, `get_owner`,
+  `get_min_risk_score`, `get_note`. Every control in the web UI calls one of
+  them. `withdraw_bond` is the one entry point with no button, because the
+  demo has nothing to withdraw after the slash.
 - **Testnet only.** Nothing here is on mainnet.
 
 ---
@@ -256,7 +288,7 @@ testnet was up.
 The full plan, with dates and costs, is in [ROADMAP.md](ROADMAP.md), including
 who this is for and who it is explicitly not for. The short version:
 
-**The testnet contract stays up.** `ReceivableEscrow` stays deployed at `1c7b0dfe…` and every deploy hash in this
+**The testnet contract stays up.** `ReceivableEscrow` v2 stays deployed at `c22bbc32…`, v1 stays up at `1c7b0dfe…` marked superseded rather than deleted, and every deploy hash in this
 README will keep resolving for as long as the network keeps testnet history. A
 v2 gets a new package hash, listed in ROADMAP.md alongside the old one and
 marked superseded rather than deleted.

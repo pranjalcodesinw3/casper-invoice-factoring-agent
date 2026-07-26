@@ -1,8 +1,11 @@
 # Invoice Factoring Agent roadmap
 
-Last updated 2026-07-26. Written against the contract deployed at
+Last updated 2026-07-26. Written against the v2 contract deployed at
+[`c22bbc32…`](https://testnet.cspr.live/contract-package/c22bbc3276256cc3fd1a2bc7eaa95464216cfbf0d938676edbdb9d8d9dd2c48a)
+on Casper testnet. The v1 package
 [`1c7b0dfe…`](https://testnet.cspr.live/contract-package/1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec)
-on Casper testnet.
+stays up, superseded rather than deleted, because its refusal receipts are
+still the cleanest evidence for the typed error codes.
 
 Everything under "Shipped" has a deploy hash or a file path. Everything below it
 does not, and is dated and costed so it can be held to.
@@ -39,7 +42,10 @@ work at all.
 
 | Capability | Evidence |
 |---|---|
-| `ReceivableEscrow` deployed, 7 entrypoints | [`1c7b0dfe…`](https://testnet.cspr.live/contract-package/1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec) package resolves |
+| `ReceivableEscrow` v2 deployed, 13 entrypoints | [`c22bbc32…`](https://testnet.cspr.live/contract-package/c22bbc3276256cc3fd1a2bc7eaa95464216cfbf0d938676edbdb9d8d9dd2c48a) package resolves |
+| Underwriter bond posted as real custody | [`6f0ba0c4…`](https://testnet.cspr.live/deploy/6f0ba0c4200c1ea0852548887928593d6408a4e6ae3589dd39cd426ed036560f) 10 CSPR into the contract purse |
+| Bond slashed to a defaulted note's investor, capped at the stake | [`54d5f236…`](https://testnet.cspr.live/deploy/54d5f236641cc758e151dcd0e93beabac40bf77a3ff3b2eb91cede3b08cbf637) |
+| The whole lifecycle runs from the web UI, not a script | post_bond -> open_note -> fund_note -> mark_repaid, all signed in a browser wallet |
 | Agent reads the acceptance bar from the contract, not its prompt | `agent/src/underwriting-tools.ts::get_escrow_terms` |
 | Tool guards re-check live state before proposing a note | `agent/src/underwriting-tools.ts::propose_open_note` |
 | Risk reports bought over x402 and signature-checked | `agent/src/risk-oracle.ts` |

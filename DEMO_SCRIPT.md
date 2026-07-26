@@ -1,7 +1,7 @@
 # Invoice Factoring Agent — Demo Video Script
 
 **Target length:** 2.5 to 3.5 minutes  
-**App URL:** `http://localhost:3040`  
+**App URL:** `http://localhost:3104/desk`  
 **Agent:** `http://localhost:4030`  
 **Risk provider:** `http://localhost:4031`  
 **Network:** Casper testnet  
@@ -39,23 +39,26 @@
 
 ## 4. Features to call out on camera
 
-1. Scenarios: **Prime debtor (approve)** vs **Sub-threshold debtor (decline)**
-2. Min risk score gate
-3. Seller public key → on-chain note
-4. Exact-amount fund CTA
-5. Owner **Mark repaid**
-6. Proof / explorer links for the note lifecycle
+1. **Underwriter bond**, posted as real custody with **Post bond**. This is the beat that is not a threshold check.
+2. Scenarios: **Prime debtor (approve)** vs **Sub-threshold debtor (decline)**
+3. The acceptance bar is read from the contract, not typed into the page. There is no min-risk-score field any more, and its absence is the point.
+4. Seller public key → on-chain note
+5. Exact-amount fund CTA
+6. Owner **Mark repaid**
+7. **Declare default**, which pays the investor out of the bond, capped at the stake
+8. Proof / explorer links for the whole lifecycle
 
 ---
 
 ## 5. Pre-roll checklist
 
-- [ ] Web **3040**, agent **4030**, risk provider **4031**
+- [ ] Web **3104** (the wallet UI is `/desk`, not `/ledger`), agent **4030**, risk provider **4031**
 - [ ] Owner wallet connected for open / repay
 - [ ] Seller public key ready (can use a known testnet key)
 - [ ] Happy path scenario: **Prime debtor (approve)**
 - [ ] Optional decline: **Sub-threshold debtor (decline)**
-- [ ] Enough CSPR to fund the face value
+- [ ] Enough CSPR to fund the face value AND post the bond. Budget ~70 CSPR for a full run: the bond is 10, each note is 15, and a payable call through the proxy wasm charges a 20 CSPR gas limit that Casper 2.x takes in full even on a revert.
+- [ ] Bond posted, or post it on camera as beat 1. `open_note` reverts `NotBonded` before it looks at the risk score, so an unbonded desk cannot demo anything downstream.
 - [ ] Browser zoom ~110%
 
 ---
@@ -68,7 +71,7 @@
 
 | | |
 |--|--|
-| **Click / Do** | Open `http://localhost:3040`. Pan hero → underwrite / fund panels. |
+| **Click / Do** | Open `http://localhost:3104/desk`. Pan hero → underwrite / fund panels. |
 | **Say** | “This is Invoice Factoring Agent. Agentic underwriting on Casper. Advances that clear on verified risk, not gut feel.” |
 
 ---
@@ -91,11 +94,25 @@
 
 ---
 
-### Shot 3 — Underwrite approve path (1:00–1:40)
+### Shot 2b — Post the bond (1:00–1:20)
+
+**This is the beat that separates this project from a threshold check.** Do it
+first, on camera, because `open_note` checks `is_bonded` before it reads the
+risk score: an unbonded desk cannot open anything at all.
 
 | | |
 |--|--|
-| **Click / Do** | Select scenario **Prime debtor (approve)**. Click **Fetch signed risk report & underwrite**. Show approved outcome. |
+| **Click / Do** | In **Underwriter bond**, note the badge reads **NOT BONDED** and **Bond staked 0**. The minimum beside it says *read from the contract*. Leave the stake at **10**, click **Post bond**, approve in the wallet. Wait for the hash, then click **Re-read chain**. |
+| **Say** | “Before it can underwrite anything, the desk has to put its own money up. Ten CSPR, and that is not a number in a table: `post_bond` is payable, so the CSPR moves into the contract's purse. The badge flips to bonded because we read it back off the chain.” |
+| **On screen** | Badge **NOT BONDED** → **BONDED ON CHAIN**, staked 0 → 10, coverage 10.0×. |
+
+---
+
+### Shot 3 — Underwrite approve path (1:20–1:55)
+
+| | |
+|--|--|
+| **Click / Do** | Select scenario **Prime debtor (approve)**. Click **Run the underwriting agent**. Show approved outcome. |
 | **Say** | “Prime debtor scenario. Fetch signed risk report and underwrite. The agent pays for risk data and clears the minimum score.” |
 
 ---
@@ -104,7 +121,7 @@
 
 | | |
 |--|--|
-| **Click / Do** | Switch to **Sub-threshold debtor (decline)**. Click **Fetch signed risk report & underwrite**. Show **Declined, note not opened**. Point out Open note stays disabled. |
+| **Click / Do** | Switch to **Sub-threshold debtor (decline)**. Click **Run the underwriting agent**. Show **Declined, note not opened**. Point out Open note stays disabled. |
 | **Say** | “Below the risk bar, the note is not opened. Declines are as visible as approvals.” |
 | **Then** | Switch back to **Prime debtor (approve)** and underwrite again. |
 
@@ -114,7 +131,7 @@
 
 | | |
 |--|--|
-| **Click / Do** | Fill **Seller public key (Address)**. Click **Open note on-chain**. Approve. Wait for success. |
+| **Click / Do** | Fill **Seller public key (Address)**. Click **Sign & open note on-chain**. Approve. Wait for success. |
 | **Say** | “Open note on-chain. The receivable is now a Casper note with a face value ready for funding.” |
 
 ---
@@ -137,7 +154,20 @@
 
 ---
 
-### Shot 8 — Proof and close (3:05–3:30)
+### Shot 7b — Declare a default, and watch the bond pay (3:05–3:30)
+
+Needs a *funded* note, so either keep a second note funded instead of repaying
+it, or run this on a note you did not mark repaid.
+
+| | |
+|--|--|
+| **Click / Do** | On a funded note click **Declare default**, approve, then **Re-read chain** on the bond panel. |
+| **Say** | “When a note defaults, the investor is paid out of the bond. The note was fifteen CSPR and the stake was ten, so they get ten. The shortfall is visible rather than smoothed over, and the contract now records the underwriter's first default against its name.” |
+| **On screen** | Bond staked 10 → 0, and the line **“This underwriter has been slashed on 1 declared default.”** |
+
+---
+
+### Shot 8 — Proof and close (3:30–3:50)
 
 | | |
 |--|--|
@@ -160,12 +190,15 @@
 | Order | Exact label | What happens |
 |------:|-------------|--------------|
 | 1 | **Connect wallet** | Owner / investor session |
-| 2 | Scenario **Prime debtor (approve)** | Happy-path invoice |
-| 3 | **Fetch signed risk report & underwrite** | x402 risk + decision |
-| 4 | **Open note on-chain** | `open_note` |
-| 5 | **Fund note (`N` CSPR)** | Payable `fund_note` |
-| 6 | **Mark repaid** | Owner closes lifecycle |
-| — | Scenario **Sub-threshold debtor (decline)** | Shows **Declined, note not opened** |
+| 2 | **Post bond** | Payable `post_bond`, 10 CSPR into the contract purse |
+| 3 | **Re-read chain** | Proves the badge came from the contract, not from the page |
+| 4 | Scenario **Prime debtor (approve)** | Happy-path invoice |
+| 5 | **Run the underwriting agent** | x402 risk + decision, read back as a tool trace |
+| 6 | **Sign & open note on-chain** | `open_note` |
+| 7 | **Fund note (`N` CSPR)** | Payable `fund_note` |
+| 8 | **Mark repaid** | Owner closes lifecycle |
+| 9 | **Declare default** | Slashes the bond to the investor, capped at the stake |
+| — | Scenario **Sub-threshold debtor (decline)** | Agent refuses by name and builds no deploy |
 
 ---
 
@@ -177,6 +210,9 @@
 | Wrong face value on fund | Select the matching open note |
 | Risk provider down | Restart 4031, underwrite again |
 | Not owner | Reconnect owner for open / repay |
+| `NotBonded` on open | The bond was withdrawn or slashed. Post it again; it is beat 2 for a reason. |
+| Button stuck on "Awaiting wallet..." | The approval popup is a separate window. Approve it, or cancel and retry. |
+| "Failed to fetch" after approving | The agent relays the broadcast, so it has to be up. Restart 4030 and retry: the deploy was signed but never sent. |
 
 ---
 

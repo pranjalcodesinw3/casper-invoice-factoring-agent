@@ -18,16 +18,33 @@ name: Invoice Factoring Agent
 grandma_pitch: Get paid today for work your customer will pay for in ninety days.
 named_user: Freelance supplier holding a 90-day unpaid invoice
 painful_moment: Payroll is due Friday and the invoice clears in November
-# WEAK CLAIM, deliberately left weak until the bond ships. "Minimum risk score
-# gate" is a threshold check and at least three other finalists have one, so this
-# field currently describes the product honestly rather than flatteringly.
-# The differentiator being built is narrower and checkable: an underwriter bond
-# that is REAL CUSTODY. Wardens (46792) has bonded, slashable scorers, but by
-# their own source it never moves value -- agents.rs:3-6 "tracked as an internal
-# U512 ledger ... rather than real purse locking", bond_vault.rs:51 "simulated
-# purse", and there is not one payable entrypoint in their entire repo. This
-# field will only claim custody once a tx hash shows CSPR leaving a bond purse.
-novel_mechanism: Agent-underwritten receivable note with an on-chain minimum risk score gate
+# The condition this field set for itself has now been met. It previously read
+# "minimum risk score gate", deliberately weak, with the note: "this field will
+# only claim custody once a tx hash shows CSPR leaving a bond purse."
+#
+# It has:
+#   post_bond        6f0ba0c4200c1ea0852548887928593d6408a4e6ae3589dd39cd426ed036560f
+#                    10 CSPR into the contract's purse, payable, from the web UI
+#   declare_default  54d5f236641cc758e151dcd0e93beabac40bf77a3ff3b2eb91cede3b08cbf637
+#                    that stake paid out to the investor of a defaulted note
+#
+# Contract state moved with it: stakedMotes 10000000000 -> 0, slashedMotes
+# 0 -> 10000000000, defaults 0 -> 1. The note's face value was 15 CSPR and the
+# stake was 10, so the payout was capped at the stake and the shortfall is
+# visible rather than smoothed over.
+#
+# The comparison stands and is the reason this is worth claiming. Wardens
+# (46792) has bonded, slashable scorers, but by their own source it never moves
+# value -- agents.rs:3-6 "tracked as an internal U512 ledger ... rather than
+# real purse locking", bond_vault.rs:51 "simulated purse", and there is not one
+# payable entrypoint in their entire repo. The difference is observable from
+# outside: after a slash here, the contract's balance is lower and the
+# investor's is higher.
+#
+# What is still NOT claimed: the contract does not detect a default. Declaring
+# it is an owner call, because nothing on chain can observe that an invoice
+# went unpaid. Everything downstream of the declaration is enforced.
+novel_mechanism: Underwriter bond held as real custody, slashed on chain to pay a defaulted note's investor
 
 # Five DISTINCT typed revert codes, each its own deploy on casper-test. Each
 # scenario is built so exactly one clause can fail, which is what makes the
@@ -156,14 +173,20 @@ competitor_overlap_count: 4
 # HONEST DEPLOYED TOTAL: 1 contract package, 1 live contract, 1 installed wasm.
 # Counted 1 of 3.
 #
-# ENTRY POINTS, the same shape of gap in the opposite direction. The scorer
-# parses 21 from source (rust_entrypoints), but the DEPLOYED contract exposes
-# exactly 7: init, open_note, fund_note, mark_repaid, get_owner,
-# get_min_risk_score, get_note. The difference is the underwriter bond
-# (post_bond, withdraw_bond, declare_default, get_bond, min_bond, is_bonded)
-# plus later getters, which are written and tested but NOT deployed, for the
-# gas reason set out in the README. Any entry-point claim we make is the
-# deployed 7, stated as such.
+# ENTRY POINTS. The v2 install closed the gap this note used to describe. The
+# DEPLOYED contract now exposes 13, read back from its own state with
+# query_global_state rather than from a build log: init, open_note, fund_note,
+# mark_repaid, post_bond, withdraw_bond, declare_default, get_bond, is_bonded,
+# min_bond, get_owner, get_min_risk_score, get_note.
+#
+# The live pair is now package c22bbc3276256cc3fd1a2bc7eaa95464216cfbf0d938676edbdb9d8d9dd2c48a
+# and contract 7125550f8500c097e974b95d4bc53c4afb5f3db05d40ca7de9edf7f37092d56f.
+# The v1 pair below is kept rather than deleted: its five refusal receipts are
+# still the cleanest evidence for the typed error codes.
+#
+# Any entry-point claim we make is the deployed 13, stated as such. Twelve of
+# them have a control in the web UI; withdraw_bond does not, because after the
+# slash there is nothing to withdraw.
 #
 # METHOD NOTE for anyone re-deriving this: read the wasm hash from the
 # CONTRACT'S stored state, not from the install deploy. Deploy records expire
