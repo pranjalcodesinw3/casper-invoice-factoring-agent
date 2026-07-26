@@ -7,9 +7,25 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { AccountType } from "@make-software/csprclick-core-types";
+
+import { connectDirect, disconnectDirect } from "@/lib/directWallet";
+
+/**
+ * How long to wait for CSPR.click to answer its own sign-in before falling
+ * back to the extension directly.
+ *
+ * The SDK stays PRIMARY. But it loads in `contentMode: "iframe"` with an empty
+ * `_walletPrototypes`, so `signIn()` sets a flag and emits an event nothing
+ * answers: it opens nothing and throws nothing. Measured on the sibling
+ * project, the button sat at "Opening wallet..." for 72s with no popup. There
+ * is no error to catch and no promise to await, so the only way to notice is
+ * to time it out and try the path that resolves.
+ */
+const CLICK_GRACE_MS = 1500;
 
 export interface SendDeployOutcome {
   cancelled: boolean;
@@ -63,7 +79,17 @@ const CDN = "https://cdn.cspr.click/ui/v2.1.0/csprclick-client-2.1.0.js";
  */
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [clickRef, setClickRef] = useState<ClickSdk | null>(null);
-  const [account, setAccount] = useState<AccountType | null>(null);
+  const [clickAccount, setAccount] = useState<AccountType | null>(null);
+  /** Set only when the direct extension path produced a key. */
+  const [directKey, setDirectKey] = useState<string | null>(null);
+  const graceTimer = useRef<number | null>(null);
+  /** Mirrors `account` for the timer callback, which fires outside React's
+   * render cycle and must not close over stale state. */
+  const haveAccount = useRef(false);
+
+  const account: AccountType | null =
+    clickAccount ??
+    (directKey ? ({ public_key: directKey } as AccountType) : null);
 
   useEffect(() => {
     const w = window as unknown as {
@@ -142,20 +168,63 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const connect = useCallback(() => {
+  /** The extension path. Only a RESOLVED promise counts as connected. */
+  const runDirect = useCallback(async () => {
     try {
-      clickRef?.signIn();
+      const { publicKey } = await connectDirect();
+      setDirectKey(publicKey);
     } catch (err) {
-      console.error("[wallet] signIn failed:", err);
+      console.error("[wallet] direct connect failed:", err);
     }
-  }, [clickRef]);
+  }, []);
+
+  useEffect(() => {
+    haveAccount.current = Boolean(account);
+    if (account && graceTimer.current !== null) {
+      window.clearTimeout(graceTimer.current);
+      graceTimer.current = null;
+    }
+  }, [account]);
+
+  useEffect(
+    () => () => {
+      if (graceTimer.current !== null) window.clearTimeout(graceTimer.current);
+    },
+    []
+  );
+
+  const connect = useCallback(() => {
+    if (clickRef) {
+      try {
+        clickRef.signIn();
+      } catch (err) {
+        console.error("[wallet] signIn failed:", err);
+        // Falls through to the direct path below.
+      }
+      if (graceTimer.current !== null) window.clearTimeout(graceTimer.current);
+      graceTimer.current = window.setTimeout(() => {
+        graceTimer.current = null;
+        if (!haveAccount.current) void runDirect();
+      }, CLICK_GRACE_MS);
+      return;
+    }
+    // No SDK at all: go straight to the extension rather than waiting on
+    // something that is not loading.
+    void runDirect();
+  }, [clickRef, runDirect]);
 
   const disconnect = useCallback(() => {
+    if (graceTimer.current !== null) {
+      window.clearTimeout(graceTimer.current);
+      graceTimer.current = null;
+    }
+    setDirectKey(null);
     try {
       clickRef?.signOut();
     } catch (err) {
       console.error("[wallet] signOut failed:", err);
     }
+    void disconnectDirect();
     setAccount(null);
   }, [clickRef]);
 
