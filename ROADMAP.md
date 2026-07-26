@@ -43,7 +43,7 @@ work at all.
 | Agent reads the acceptance bar from the contract, not its prompt | `agent/src/underwriting-tools.ts::get_escrow_terms` |
 | Tool guards re-check live state before proposing a note | `agent/src/underwriting-tools.ts::propose_open_note` |
 | Risk reports bought over x402 and signature-checked | `agent/src/risk-oracle.ts` |
-| 12 contract tests, 11 agent tests, CI with a clean-clone job | `.github/workflows/ci.yml` |
+| 39 contract tests, 50 agent tests, CI with a clean-clone job | `.github/workflows/ci.yml` |
 
 ---
 

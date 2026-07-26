@@ -65,7 +65,7 @@ git clone https://github.com/pranjalcodesinw3/casper-invoice-factoring-agent && 
 (cd agent && npm install && npm test)
 ```
 
-12 contract tests and 11 agent tests, fully offline: no API key, no node, no
+39 contract tests and 50 agent tests, fully offline: no API key, no node, no
 secret. To run the flow locally, start the risk provider with
 `cd agent && npm run provider`, then `npm run cli:good` (or `cli:risky` to watch
 it refuse) in a second shell.
@@ -184,7 +184,12 @@ credits it with nothing.
 - **No repayment or default path.** The contract opens and funds notes. What
   happens when the debtor pays late, partially, or never is not modelled.
 - **No secondary market.** A note is not transferable.
-- **One module, 7 entrypoints.** Deliberately small.
+- **One module, 7 entrypoints on chain.** That is the *deployed* surface,
+  read from the contract's own state: `init`, `open_note`, `fund_note`,
+  `mark_repaid`, `get_owner`, `get_min_risk_score`, `get_note`. The source
+  now parses to 21 because it also contains the underwriter bond, which is
+  written and tested but **not deployed**. Wherever this project states an
+  entrypoint count, it is the deployed 7.
 - **Testnet only.** Nothing here is on mainnet.
 
 ---
