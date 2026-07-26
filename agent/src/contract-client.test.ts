@@ -233,6 +233,15 @@ test("building the same call twice yields different hashes, because of the times
     1
   );
   const a = buildOpenNoteDeploy(CONTRACT, OWNER_PUBLIC_KEY, args).deployHashHex;
+  // The header timestamp has millisecond resolution, so two builds inside the
+  // same millisecond hash identically and this test failed about one run in
+  // five. That is not a flake to retry: it is the claim being imprecise. The
+  // hash varies with the CLOCK, so the clock has to move for the assertion to
+  // mean anything. Busy-wait rather than sleep, to keep the test synchronous.
+  const start = Date.now();
+  while (Date.now() === start) {
+    /* spin until the millisecond rolls over */
+  }
   const b = buildOpenNoteDeploy(CONTRACT, OWNER_PUBLIC_KEY, args).deployHashHex;
   assert.notEqual(a, b, "a deploy header carries a timestamp, so hashes are not reproducible");
 });

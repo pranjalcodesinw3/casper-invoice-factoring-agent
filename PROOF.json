@@ -1,11 +1,11 @@
 {
   "network": "casper-test",
   "node": "https://node.testnet.casper.network/rpc",
-  "generatedAt": "2026-07-25T21:25:49.632Z",
-  "packageHash": "1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec",
-  "contractHash": "984243631528b25918c69364ba6c28893b061d1c90858e1872b7c8c0f56a8cb8",
-  "explorer": "https://testnet.cspr.live/contract-package/1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec",
-  "note": "Every hash is a real testnet deploy. Deploys are Deploy-type, so the canonical explorer path is /deploy/<hash>. A step with result 'reverted' and a User error code below 64535 is contract enforcement; codes at or above that are Odra-internal and are NOT counted.",
+  "generatedAt": "2026-07-26T14:27:36.908Z",
+  "packageHash": "c22bbc3276256cc3fd1a2bc7eaa95464216cfbf0d938676edbdb9d8d9dd2c48a",
+  "contractHash": "7125550f8500c097e974b95d4bc53c4afb5f3db05d40ca7de9edf7f37092d56f",
+  "explorer": "https://testnet.cspr.live/contract-package/c22bbc3276256cc3fd1a2bc7eaa95464216cfbf0d938676edbdb9d8d9dd2c48a",
+  "note": "Every hash is a real testnet deploy, and every result here was read back from the node rather than asserted. The first block is the v2 install (13 entry points, underwriter bond custody), driven end to end through the web UI with a browser wallet. The refusals that follow were executed against the v1 install and are kept because a rejection code is evidence regardless of which install produced it.",
   "distinctRejectionCodes": [
     2,
     3,
@@ -14,6 +14,76 @@
     7
   ],
   "steps": [
+    {
+      "name": "post_bond (10 CSPR staked, the contract minimum)",
+      "entryPoint": "post_bond",
+      "deploy": "6f0ba0c4200c1ea0852548887928593d6408a4e6ae3589dd39cd426ed036560f",
+      "proves": "the bond is custody, not a table entry: payable, so real CSPR moved into the contract's purse",
+      "result": "ok",
+      "errorCode": null,
+      "errorName": null,
+      "raw": null
+    },
+    {
+      "name": "open_note (risk 82 >= min 50, underwriter bonded)",
+      "entryPoint": "open_note",
+      "deploy": "41401fc88b0c9ef903616f777a0daa4bc91a398ecc702280e74f0e17458fcf82",
+      "proves": "the agent's proposal became a note only after the owner signed it, and only while bonded",
+      "result": "ok",
+      "errorCode": null,
+      "errorName": null,
+      "raw": null
+    },
+    {
+      "name": "fund_note (15 CSPR, the exact face value)",
+      "entryPoint": "fund_note",
+      "deploy": "4102e72eca8572abc580e31c3293288b47a7063d36fd3fd0925d2bf0aea0bd8e",
+      "proves": "the investor's CSPR was forwarded to the seller by the escrow",
+      "result": "ok",
+      "errorCode": null,
+      "errorName": null,
+      "raw": null
+    },
+    {
+      "name": "mark_repaid (debtor settled off chain)",
+      "entryPoint": "mark_repaid",
+      "deploy": "8c6e33135cab0d7df58fa94de0848b3e470c7f0197a59132d22e83ebce2a447a",
+      "proves": "the lifecycle closes: note 1 reads Repaid",
+      "result": "ok",
+      "errorCode": null,
+      "errorName": null,
+      "raw": null
+    },
+    {
+      "name": "open_note (second note, for the default path)",
+      "entryPoint": "open_note",
+      "deploy": "a27b32f7892320239ddbe3d9c3c5e7c07a3a17cb10b57d5b5473a84adb4766d1",
+      "proves": "note ids are found by scanning chain state, so a second note does not collide",
+      "result": "ok",
+      "errorCode": null,
+      "errorName": null,
+      "raw": null
+    },
+    {
+      "name": "fund_note (15 CSPR against note 2)",
+      "entryPoint": "fund_note",
+      "deploy": "60c8cb9c755f620e49969f0a0dd1b4dda3998129485573f72e955b4a371d37ae",
+      "proves": "a second investor position exists to be made whole",
+      "result": "ok",
+      "errorCode": null,
+      "errorName": null,
+      "raw": null
+    },
+    {
+      "name": "declare_default (bond slashed to the investor, capped at the stake)",
+      "entryPoint": "declare_default",
+      "deploy": "54d5f236641cc758e151dcd0e93beabac40bf77a3ff3b2eb91cede3b08cbf637",
+      "proves": "the 10 CSPR stake paid the investor of a 15 CSPR note: the payout is capped and the shortfall is visible, and the contract now reports defaults 1",
+      "result": "ok",
+      "errorCode": null,
+      "errorName": null,
+      "raw": null
+    },
     {
       "name": "open_note (accepted, risk 80 >= min 50)",
       "entryPoint": "open_note",
