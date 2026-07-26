@@ -423,16 +423,17 @@ export function explorerDeployUrl(deployHashHex: string): string {
 }
 
 /**
- * The testnet node this app broadcasts to.
+ * Where a signed deploy is broadcast from the browser.
  *
- * The Casper Wallet extension signs but does not broadcast, so a signature is
- * not a transaction. Something has to PUT the signed deploy, and doing it from
- * the browser keeps the deploy hash the UI shows identical to the one the node
- * accepted rather than one built hopefully before signing.
+ * NOT the node directly. The testnet RPC answers 403 to the CORS preflight, so
+ * a `fetch` from the page fails with a bare "Failed to fetch" AFTER the user
+ * has approved in their wallet: the worst place to lose a transaction, because
+ * the wallet showed an approval for something that never reached the chain.
+ * The agent relays instead, and holds no key while doing it.
  */
-export const NODE_RPC_URL =
-  process.env.NEXT_PUBLIC_CASPER_NODE_URL ??
-  "https://node.testnet.casper.network/rpc";
+export const BROADCAST_URL = `${
+  process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:4030"
+}/api/broadcast`;
 
 /**
  * Attaches a signature to a legacy deploy and broadcasts it.
@@ -462,36 +463,28 @@ export async function signAndSendDeploy(
     approvals: [{ signer: signerPublicKeyHex, signature: signatureHex }],
   };
 
-  const res = await fetch(NODE_RPC_URL, {
+  const res = await fetch(BROADCAST_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "account_put_deploy",
-      params: { deploy: signed },
-    }),
+    body: JSON.stringify({ deploy: signed }),
   });
 
-  if (!res.ok) {
-    throw new Error(`Node returned HTTP ${res.status} for account_put_deploy`);
-  }
-  const body = (await res.json()) as {
-    result?: { deploy_hash?: string };
-    error?: { message?: string; data?: string };
+  const body = (await res.json().catch(() => ({}))) as {
+    deployHash?: string;
+    error?: string;
+    data?: string;
   };
-  if (body.error) {
+  if (!res.ok) {
     throw new Error(
-      `Node rejected the deploy: ${body.error.message ?? "unknown error"}${
-        body.error.data ? ` (${body.error.data})` : ""
+      `${body.error ?? `broadcast failed with HTTP ${res.status}`}${
+        body.data ? ` (${body.data})` : ""
       }`
     );
   }
-  const hash = body.result?.deploy_hash;
-  if (!hash) {
-    throw new Error("Node accepted the deploy but returned no hash");
+  if (!body.deployHash) {
+    throw new Error("Broadcast succeeded but returned no deploy hash");
   }
-  return hash;
+  return body.deployHash;
 }
 
 export function explorerContractUrl(contractHash: string): string {

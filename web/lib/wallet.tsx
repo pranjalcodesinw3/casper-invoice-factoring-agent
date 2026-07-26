@@ -231,32 +231,42 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const sendDeploy = useCallback(
     async (deployJson: unknown, signingPublicKeyHex: string): Promise<SendDeployOutcome> => {
-      // The extension path, used whenever CSPR.click never produced an
-      // account. `clickRef.send` signs AND broadcasts; the extension only
-      // signs, so this path has to broadcast the signed deploy itself.
+      // The extension is the signer on every path here, including the one that
+      // authenticated through CSPR.click's modal, so this tries the extension
+      // FIRST rather than treating it as a fallback.
       //
-      // This is not a fallback in practice, it is the path: CSPR.click's
-      // iframe mode registers no wallet, so `connect()` times out into
-      // `runDirect` on every run and `clickRef.send` would be signing for an
-      // account it never authenticated.
-      const useDirect = directKey !== null || clickRef == null;
-      if (useDirect) {
-        try {
-          const { cancelled, signature } = await signDeployDirect(
-            deployJson,
-            signingPublicKeyHex
-          );
-          if (cancelled || !signature) {
-            return { cancelled: true, deployHash: null, error: null };
-          }
-          const deployHash = await signAndSendDeploy(
-            deployJson as Record<string, unknown>,
-            signingPublicKeyHex,
-            signature
-          );
-          return { cancelled: false, deployHash, error: null };
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
+      // Measured, not assumed. `csprclick.send()` opens the extension's
+      // approval popup, takes the signature, and then throws inside the SDK:
+      //
+      //   Uncaught (in promise) TypeError:
+      //     Cannot read properties of undefined (reading 'includes')
+      //     at csprclick-sdk-2.1.js
+      //
+      // The throw is inside a promise the SDK never settles, so `await` here
+      // hangs forever, the button sits at "Awaiting wallet..." and the signed
+      // deploy is dropped without ever being broadcast. Confirmed on chain:
+      // the account balance was unchanged after a full approve. The extension
+      // signs but does not broadcast, so this path PUTs the deploy itself.
+      try {
+        const { cancelled, signature } = await signDeployDirect(
+          deployJson,
+          signingPublicKeyHex
+        );
+        if (cancelled || !signature) {
+          return { cancelled: true, deployHash: null, error: null };
+        }
+        const deployHash = await signAndSendDeploy(
+          deployJson as Record<string, unknown>,
+          signingPublicKeyHex,
+          signature
+        );
+        return { cancelled: false, deployHash, error: null };
+      } catch (err) {
+        // Only fall through when there is genuinely no extension to sign with.
+        // Any other failure is a real one and must be reported, not retried
+        // against an SDK path that is known to hang.
+        const message = err instanceof Error ? err.message : String(err);
+        if (!/No Casper Wallet extension/.test(message)) {
           console.error("[wallet] direct send failed:", message);
           return { cancelled: false, deployHash: null, error: message };
         }
@@ -281,7 +291,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         return { cancelled: false, deployHash: null, error: message };
       }
     },
-    [clickRef, directKey]
+    [clickRef]
   );
 
   const value = useMemo<WalletState>(

@@ -46,6 +46,10 @@ export function usdToDemoCspr(usd: number): string {
   return (Math.round((usd / DEMO_USD_PER_CSPR) * 100) / 100).toFixed(2);
 }
 
+/** The testnet node every read and broadcast goes through. */
+const NODE_URL =
+  process.env.CASPER_NODE_ADDRESS ?? "https://node.testnet.casper.network/rpc";
+
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
   .split(",")
   .map((o) => o.trim())
@@ -75,7 +79,7 @@ app.use((req: Request, res: Response, next) => {
 
 const underwriter = createUnderwriter({
   node: {
-    rpcUrl: process.env.CASPER_NODE_ADDRESS ?? "https://node.testnet.casper.network/rpc",
+    rpcUrl: NODE_URL,
     accessKey: process.env.CSPR_CLOUD_ACCESS_KEY,
     contractHash: CONTRACT_HASH,
   },
@@ -159,6 +163,64 @@ app.get("/api/escrow-terms", async (req: Request, res: Response) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[server] escrow-terms read failed:", message);
+    res.status(502).json({ error: message });
+  }
+});
+
+/**
+ * Broadcasts a deploy the browser has already signed.
+ *
+ * The browser cannot PUT to the node directly: the testnet RPC answers 403 to
+ * the CORS preflight, so `fetch` from the page fails with a bare "Failed to
+ * fetch" AFTER the user has approved in their wallet. That is the worst place
+ * to lose a transaction, because the wallet showed an approval for something
+ * that never reached the chain.
+ *
+ * This relays. It does NOT sign: no key is held here, and a deploy arriving
+ * without a valid approval is rejected by the node, not by trust in the
+ * caller. The response is the node's own verdict, passed through unedited.
+ */
+app.post("/api/broadcast", async (req: Request, res: Response) => {
+  const deploy = req.body?.deploy;
+  if (!deploy || typeof deploy !== "object") {
+    return res.status(400).json({ error: "body must be {deploy: <signed deploy JSON>}" });
+  }
+  if (!Array.isArray(deploy.approvals) || deploy.approvals.length === 0) {
+    // An unsigned deploy would be rejected downstream anyway; refusing here
+    // makes the reason legible instead of surfacing as an opaque node error.
+    return res.status(400).json({ error: "deploy has no approvals; sign it first" });
+  }
+
+  try {
+    const upstream = await fetch(NODE_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "account_put_deploy",
+        params: { deploy },
+      }),
+    });
+    const body = (await upstream.json()) as {
+      result?: { deploy_hash?: string };
+      error?: { message?: string; data?: string };
+    };
+    if (body.error) {
+      return res.status(502).json({
+        error: body.error.message ?? "node rejected the deploy",
+        data: body.error.data,
+      });
+    }
+    const deployHash = body.result?.deploy_hash;
+    if (!deployHash) {
+      return res.status(502).json({ error: "node returned no deploy hash" });
+    }
+    console.log(`[server] broadcast ${deployHash}`);
+    res.json({ deployHash });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[server] broadcast failed:", message);
     res.status(502).json({ error: message });
   }
 });
