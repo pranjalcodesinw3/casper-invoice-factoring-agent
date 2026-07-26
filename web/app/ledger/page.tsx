@@ -1,4 +1,12 @@
+import type { Metadata } from "next";
 import DecisionLedger from "@/components/DecisionLedger";
+
+export const metadata: Metadata = {
+  title: "Invoice Factoring Agent: bond and note ledger",
+  description:
+    "The full lifecycle: bond, open, fund, repay, and the slashed default path.",
+};
+
 
 export default function LedgerPage() {
   return (
