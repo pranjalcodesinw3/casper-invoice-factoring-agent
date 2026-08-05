@@ -55,7 +55,7 @@ work at all.
 
 ## Q3 2026 (Aug-Sep): get it on chain, then make the risk real
 
-**DONE 2026-07-26 — the lifecycle and the refusals are both on chain.**
+**DONE 2026-07-26: the lifecycle and the refusals are both on chain.**
 Open, fund and repay all execute, and five refusals (`RiskTooHigh`, `NoteExists`,
 `NoNote`, `WrongAmount`, `NotFunded`) each have their own deploy hash. Two
 things this cost that are invisible until you hit them: a payable Odra entrypoint
@@ -66,7 +66,7 @@ direct call sees `attached_value == 0` and reverts as an underpayment; and
 the argument deserializer before any contract logic runs, which is not
 enforcement and must never be counted as a rejection.
 
-**Sep 2026 — replace the fixture debtor set.**
+**Sep 2026: replace the fixture debtor set.**
 `agent/src/debtors.json` is sample data. Until a risk score comes from something
 outside this repo, the underwriting is a demo of a mechanism rather than a
 credit decision. The cheapest honest version is one real data source, even a
@@ -76,18 +76,18 @@ narrow one, with its provenance recorded in `risk_data_hash`.
 
 ## Q4 2026 (Oct-Dec): make it a market
 
-**Oct 2026 — the repayment and default path.**
+**Oct 2026: the repayment and default path.**
 The contract opens and funds notes. What happens when the debtor pays late,
 partially, or never is simply not modelled, and that is most of what factoring
 actually is. This is the largest single piece of missing contract logic and it
 is honestly a quarter of work, not a weekend.
 
-**Nov 2026 — transferable notes.**
+**Nov 2026: transferable notes.**
 A note is currently not transferable, so there is no secondary market and an
 investor is locked in until repayment. CEP-18 or CEP-78 representation is the
 enabling change.
 
-**Dec 2026 — decide whether the underwriter runs on AgentVault.**
+**Dec 2026: decide whether the underwriter runs on AgentVault.**
 Our flagship generalises scoped, attenuating authority. An underwriting agent
 that can commit investor funds is exactly the case for it: the agent should hold
 a grant with a per-note ceiling it cannot exceed, rather than an unrestricted

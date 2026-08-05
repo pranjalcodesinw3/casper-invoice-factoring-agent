@@ -1,4 +1,4 @@
-# Invoice Factoring Agent — Demo Video Script
+# Invoice Factoring Agent: Demo Video Script
 
 **Target length:** 2.5 to 3.5 minutes  
 **App URL:** `http://localhost:3104/desk`  
@@ -65,7 +65,7 @@
 
 ## 6. Shot list and spoken script
 
-### Shot 0 — Cold open (0:00–0:20)
+### Shot 0: Cold open (0:00-0:20)
 
 **On screen:** Brand **Invoice Factoring Agent**, headline **Advances that clear on verified risk, not gut feel.**
 
@@ -76,7 +76,7 @@
 
 ---
 
-### Shot 1 — Problem and solution (0:20–0:45)
+### Shot 1: Problem and solution (0:20-0:45)
 
 | | |
 |--|--|
@@ -85,7 +85,7 @@
 
 ---
 
-### Shot 2 — Connect wallet (0:45–1:00)
+### Shot 2: Connect wallet (0:45-1:00)
 
 | | |
 |--|--|
@@ -94,7 +94,7 @@
 
 ---
 
-### Shot 2b — Post the bond (1:00–1:20)
+### Shot 2b: Post the bond (1:00-1:20)
 
 **This is the beat that separates this project from a threshold check.** Do it
 first, on camera, because `open_note` checks `is_bonded` before it reads the
@@ -108,7 +108,7 @@ risk score: an unbonded desk cannot open anything at all.
 
 ---
 
-### Shot 3 — Underwrite approve path (1:20–1:55)
+### Shot 3: Underwrite approve path (1:20-1:55)
 
 | | |
 |--|--|
@@ -117,7 +117,7 @@ risk score: an unbonded desk cannot open anything at all.
 
 ---
 
-### Shot 4 — Optional decline beat
+### Shot 4: Optional decline beat
 
 | | |
 |--|--|
@@ -127,7 +127,7 @@ risk score: an unbonded desk cannot open anything at all.
 
 ---
 
-### Shot 5 — Open note (1:40–2:10)
+### Shot 5: Open note (1:40-2:10)
 
 | | |
 |--|--|
@@ -136,7 +136,7 @@ risk score: an unbonded desk cannot open anything at all.
 
 ---
 
-### Shot 6 — Fund note (2:10–2:45)
+### Shot 6: Fund note (2:10-2:45)
 
 | | |
 |--|--|
@@ -145,7 +145,7 @@ risk score: an unbonded desk cannot open anything at all.
 
 ---
 
-### Shot 7 — Optional mark repaid (2:45–3:05)
+### Shot 7: Optional mark repaid (2:45-3:05)
 
 | | |
 |--|--|
@@ -154,7 +154,7 @@ risk score: an unbonded desk cannot open anything at all.
 
 ---
 
-### Shot 7b — Declare a default, and watch the bond pay (3:05–3:30)
+### Shot 7b: Declare a default, and watch the bond pay (3:05-3:30)
 
 Needs a *funded* note, so either keep a second note funded instead of repaying
 it, or run this on a note you did not mark repaid.
@@ -167,7 +167,7 @@ it, or run this on a note you did not mark repaid.
 
 ---
 
-### Shot 8 — Proof and close (3:30–3:50)
+### Shot 8: Proof and close (3:30-3:50)
 
 | | |
 |--|--|
@@ -198,7 +198,7 @@ it, or run this on a note you did not mark repaid.
 | 7 | **Fund note (`N` CSPR)** | Payable `fund_note` |
 | 8 | **Mark repaid** | Owner closes lifecycle |
 | 9 | **Declare default** | Slashes the bond to the investor, capped at the stake |
-| — | Scenario **Sub-threshold debtor (decline)** | Agent refuses by name and builds no deploy |
+| n/a | Scenario **Sub-threshold debtor (decline)** | Agent refuses by name and builds no deploy |
 
 ---
 
@@ -218,7 +218,7 @@ it, or run this on a note you did not mark repaid.
 
 ## 10. Suggested title and description
 
-**Title:** Invoice Factoring Agent — Advances on verified risk on Casper
+**Title:** Invoice Factoring Agent: Advances on verified risk on Casper
 
 **Description:**
 

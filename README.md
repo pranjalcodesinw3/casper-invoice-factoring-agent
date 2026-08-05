@@ -11,7 +11,93 @@ notes with native CSPR, which the escrow forwards to the seller.
 
 ---
 
-## Why this is not the other 77 finalists
+## The problem
+
+Small suppliers wait 30 to 90 days to get paid on an invoice while rent,
+payroll, and inventory costs keep running the whole time. Invoice factoring
+exists to close that gap: sell the receivable at a discount and get paid
+today instead of in three months. But factoring today is slow,
+relationship-gated, and opaque, a broker negotiation rather than a market.
+
+Moving factoring on chain does not fix the hard part. Settlement was never
+the bottleneck; underwriting is. Someone still has to decide whether a given
+debtor is likely to pay, and whoever makes that call has every incentive to
+set their own acceptance bar low enough to keep the fee income flowing. An
+underwriter that picks its own threshold and faces no penalty for a bad note
+is not underwriting, it is originating fee income with extra steps.
+
+An autonomous agent makes this worse by default, not better. An LLM that
+reads a request, decides a debtor looks fine, and calls `open_note` is the
+same conflict of interest with a faster interface and no memory of
+yesterday's bad call. The acceptance bar has to live somewhere the agent
+cannot move it, and the underwriter has to have something real at stake when
+it is wrong.
+
+## The solution
+
+An AI agent reads the escrow's terms **from the contract, never from the
+request**: it calls `get_escrow_terms` to learn the minimum risk score the
+contract enforces, buys a signed risk score over an x402-style endpoint (the
+provider answers `402 Payment Required`, the agent's retry carries payment,
+and the returned report is HMAC-signed so an unverified score is refused
+rather than committed on chain), and only then calls `propose_open_note`.
+Investors fund notes by attaching native CSPR equal to the face value;
+`fund_note` is a payable entrypoint, and the escrow forwards the full amount
+straight to the seller in the same transaction.
+
+The acceptance bar sits in the contract, not in the agent's prompt:
+`get_min_risk_score` returns the enforced minimum, and `open_note` reverts
+`RiskTooHigh` if the submitted score falls short, regardless of what the
+agent believed. That is also why the debtor fixture behind the risk score is
+not a liability: it is deliberately kept out of the critical path. A
+tampered or wrong fixture score can shift what the agent proposes, but it
+cannot open a note the contract's own `min_risk_score` would refuse.
+
+The underwriter bond is the other half. Before the underwriter, meaning this
+agent's on-chain identity, may open any note at all, it must `post_bond`
+real CSPR into the contract's purse, and `open_note` reverts `NotBonded`
+until the minimum is staked. If a funded note is later declared in default,
+`declare_default` pays the investor out of that bond with a real
+`transfer_tokens` call, capped at whatever is actually staked. A bad note now
+costs the underwriter money on chain, not just a lower score next quarter.
+
+## Features
+
+The full deployed surface is 13 entrypoints on one Odra module:
+
+| Entrypoint | What it does |
+|---|---|
+| `init` | Deployer becomes owner; sets `min_risk_score` and `min_bond` |
+| `open_note` | Opens a note for a seller; reverts `NotBonded`, `NoteExists`, or `RiskTooHigh` before writing any state |
+| `fund_note` | `#[odra(payable)]`; investor attaches exactly the face value in CSPR, and the escrow forwards it straight to the seller in the same call |
+| `mark_repaid` | Owner marks a funded note settled; reverts `NotFunded` on an unfunded note |
+| `post_bond` | `#[odra(payable)]`; underwriter stakes CSPR into the contract's purse before it may open any note |
+| `withdraw_bond` | Returns unslashed collateral to the underwriter; reverts `BondTooSmall` on an over-ask |
+| `declare_default` | Owner-only; pays the note's investor out of the bond via `transfer_tokens`, capped at what is staked |
+| `get_bond` | Reads an underwriter's staked amount, cumulative slashed total, and default count |
+| `is_bonded` | True once the underwriter holds at least `min_bond`; gates `open_note` |
+| `min_bond` | Reads the minimum stake required to underwrite |
+| `get_owner` | Reads the escrow owner, the agent-underwriter's address |
+| `get_min_risk_score` | Reads the acceptance bar `open_note` enforces, the same value the agent reads before proposing a note |
+| `get_note` | Reads a note's seller, investor, face value, risk score, and status |
+
+- **The acceptance bar is read from the contract, not carried in the agent's
+  prompt.** The agent calls `get_min_risk_score` before proposing a note, and
+  `open_note` re-enforces the same threshold on chain regardless of what the
+  agent believed.
+- **`fund_note` is payable.** An investor's attached CSPR moves and the
+  escrow forwards it to the seller in the same transaction, with no
+  intermediate custody step.
+- **The bond and slash path** (`post_bond`, `is_bonded`, `declare_default`)
+  makes a bad note cost the underwriter real CSPR, not just a lower score.
+- **The x402 signed risk-score handshake** (`agent/src/risk-oracle.ts`): the
+  risk provider answers `402 Payment Required`, the agent's retry carries
+  payment, and the returned report is HMAC-signed and verified client side
+  before its hash is committed on chain as `risk_data_hash`.
+
+---
+
+## Why this is a better project on the Casper blockchain
 
 Most agentic underwriters in this field decide with a fixed if-ladder in
 TypeScript while an LLM writes prose next to it. Here the model gets no chain
@@ -78,9 +164,20 @@ Casper **testnet** (`casper-test`).
 
 | What | Hash | Status |
 |---|---|---|
-| Package (v2, live) | `c22bbc3276256cc3fd1a2bc7eaa95464216cfbf0d938676edbdb9d8d9dd2c48a` | [contract-package](https://testnet.cspr.live/contract-package/c22bbc3276256cc3fd1a2bc7eaa95464216cfbf0d938676edbdb9d8d9dd2c48a) — 13 entry points |
+| Package (v2, live) | `c22bbc3276256cc3fd1a2bc7eaa95464216cfbf0d938676edbdb9d8d9dd2c48a` | [contract-package](https://testnet.cspr.live/contract-package/c22bbc3276256cc3fd1a2bc7eaa95464216cfbf0d938676edbdb9d8d9dd2c48a), 13 entry points |
 | Contract (v2, live) | `7125550f8500c097e974b95d4bc53c4afb5f3db05d40ca7de9edf7f37092d56f` | live, the one the app calls |
-| Package (v1, superseded) | `1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec` | [contract-package](https://testnet.cspr.live/contract-package/1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec) — 7 entry points, kept for its refusal receipts |
+| Package (v1, superseded) | `1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec` | [contract-package](https://testnet.cspr.live/contract-package/1c7b0dfe3d37d1c7acaed683b5e0f6183fe144c5daa39a361b6d3b50d850efec), 7 entry points, kept for its refusal receipts |
+
+### What is deployed
+
+| Fact | Detail |
+|---|---|
+| Live contract | `7125550f8500c097e974b95d4bc53c4afb5f3db05d40ca7de9edf7f37092d56f` |
+| Module surface | One Odra module, 13 entrypoints on chain, read from the contract's own state rather than from a build log |
+| Entrypoints | `init`, `open_note`, `fund_note`, `mark_repaid`, `post_bond`, `withdraw_bond`, `declare_default`, `get_bond`, `is_bonded`, `min_bond`, `get_owner`, `get_min_risk_score`, `get_note` |
+| Web UI wiring | Every control in the web UI calls one of the entrypoints above |
+| `withdraw_bond` | The one entrypoint with no button in the demo: there is nothing to withdraw after the slash |
+| Network | Testnet only. Nothing here is on mainnet |
 
 ### The bond lifecycle, driven from the web UI
 
@@ -162,10 +259,10 @@ challenge court with counter-bonds and slashing. But by its own source the bond
 never moves value:
 
 > "bonds are tracked as an internal U512 ledger inside the contract rather than
-> real purse locking" — `wardens_core/src/agents.rs`
+> real purse locking", from `wardens_core/src/agents.rs`
 >
 > "The bond is accounted internally (simulated purse — Phase 2 hardening will
-> wire real CSPR purse transfer once Casper account abstraction ships)" —
+> wire real CSPR purse transfer once Casper account abstraction ships)", from
 > `wardens_phase2/src/bond_vault.rs`
 
 There is no `payable` entrypoint anywhere in that repository, so a slash
@@ -197,32 +294,6 @@ the real world. What the contract enforces is everything downstream of the
 declaration: only a funded note can default, the payout is capped by what was
 actually staked, and the money goes to the note's recorded investor rather
 than to whoever asked.
-
-## Honest limits
-
-- **The debtor set is a fixture.** `agent/src/debtors.json` and `invoices.json`
-  are sample data. There is no integration with an accounting system, an
-  invoicing platform, or a credit bureau. No public credit bureau exists to
-  call for these debtors, so the fixture stands in for one. It is kept out of
-  the critical path: the acceptance bar itself is read from the contract
-  (`get_min_risk_score`) and re-enforced on chain, so a tampered fixture
-  cannot open a note the contract would refuse.
-- **The risk score is signed by our own provider**, with a shared HMAC secret.
-  It is a working payment-and-signature handshake, not an independent credit
-  oracle, and a third party cannot verify a report from the chain alone.
-- **Default is declared, not detected.** `declare_default` pays the investor
-  from the bond, and that transfer is real. But the *declaration* is an owner
-  call: nothing on chain observes that the debtor failed to pay. Partial and
-  late payment are still not modelled at all.
-- **No secondary market.** A note is not transferable.
-- **One module, 13 entrypoints on chain.** That is the *deployed* surface,
-  read from the contract's own state rather than from a build log: `init`,
-  `open_note`, `fund_note`, `mark_repaid`, `post_bond`, `withdraw_bond`,
-  `declare_default`, `get_bond`, `is_bonded`, `min_bond`, `get_owner`,
-  `get_min_risk_score`, `get_note`. Every control in the web UI calls one of
-  them. `withdraw_bond` is the one entry point with no button, because the
-  demo has nothing to withdraw after the slash.
-- **Testnet only.** Nothing here is on mainnet.
 
 ---
 
